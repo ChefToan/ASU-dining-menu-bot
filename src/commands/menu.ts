@@ -103,33 +103,6 @@ export async function execute(interaction: CommandInteraction) {
                 return;
             }
 
-            // Get all stations for the initial view
-            const renderAllStations = () => {
-                let allStationsDescription = '';
-                let stationCount = 0;
-
-                for (const [stationId, stationName] of nonEmptyStations) {
-                    // Limit to at most 5 stations to avoid hitting Discord's character limit
-                    if (stationCount >= 5) break;
-
-                    const stationItems = stationMap.get(stationId) || [];
-                    if (stationItems.length > 0) {
-                        allStationsDescription += `\n**${stationName}**\n`;
-                        for (const item of stationItems) {
-                            allStationsDescription += `• ${item.MarketingName}\n`;
-                        }
-                        stationCount++;
-                    }
-                }
-
-                // Add a note if not all stations are displayed
-                if (stationCount < nonEmptyStations.length) {
-                    allStationsDescription += '\n*Use the dropdown menu to see more stations.*';
-                }
-
-                return allStationsDescription;
-            };
-
             // Function to render a specific station
             const renderStation = (stationId: string, stationName: string) => {
                 const stationItems = stationMap.get(stationId) || [];
@@ -147,24 +120,19 @@ export async function execute(interaction: CommandInteraction) {
                 return description;
             };
 
-            // Create the main embed with all stations by default
+            // Create the main embed with just the header text - no menu items initially
             const mainEmbed = new EmbedBuilder()
                 .setColor(Colors.Blue)
                 .setTitle(`${displayName}`)
-                .setDescription(`Here are the menu options for ${period.name} at ${displayName} from ${timeRange}${renderAllStations()}`);
+                .setDescription(`Here are the menu options for ${period.name} at ${displayName} from ${timeRange}\n\n` +
+                    `*Please use the dropdown menu below to view stations.*`);
 
             // Create select menu for stations
             const selectMenu = new StringSelectMenuBuilder()
                 .setCustomId('station_select')
                 .setPlaceholder('Select a station to view items');
 
-            // Add options for each station (including an "All Stations" option)
-            selectMenu.addOptions(
-                new StringSelectMenuOptionBuilder()
-                    .setLabel('All Stations')
-                    .setValue('all_stations')
-            );
-
+            // Add options for each station
             for (const [stationId, stationName] of nonEmptyStations) {
                 selectMenu.addOptions(
                     new StringSelectMenuOptionBuilder()
@@ -199,16 +167,10 @@ export async function execute(interaction: CommandInteraction) {
 
             collector.on('collect', async (selectInteraction) => {
                 const selectedValue = selectInteraction.values[0];
-                let updatedDescription = `Here are the menu options for ${period.name} at ${displayName} from ${timeRange}`;
+                const stationName = stationNames.get(selectedValue) || 'Unknown Station';
 
-                if (selectedValue === 'all_stations') {
-                    // Show all stations again
-                    updatedDescription += renderAllStations();
-                } else {
-                    // Show only the selected station
-                    const stationName = stationNames.get(selectedValue) || 'Unknown Station';
-                    updatedDescription += renderStation(selectedValue, stationName);
-                }
+                // Add spacing between title and content
+                const updatedDescription = `Here are the menu options for ${period.name} at ${displayName} from ${timeRange}\n\n${renderStation(selectedValue, stationName)}`;
 
                 const updatedEmbed = new EmbedBuilder()
                     .setColor(Colors.Blue)
