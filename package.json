@@ -1,0 +1,26 @@
+{
+  "name": "asu-dining-bot",
+  "version": "0.1.0",
+  "description": "Discord bot for ASU dining hall menus",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts"
+  },
+  "dependencies": {
+    "axios": "^1.8.4",
+    "discord.js": "^14.18.0",
+    "dotenv": "^16.5.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.14.1",
+    "nodemon": "^3.1.9",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.8.3"
+  },
+  "private": true,
+  "repository": "git@github.com:ChefToan/asu-dining-menu-bot.git",
+  "author": "Toan",
+  "license": "MIT"
+}
