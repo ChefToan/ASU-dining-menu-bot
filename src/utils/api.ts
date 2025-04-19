@@ -5,7 +5,17 @@ const API_URL = 'https://asu.campusdish.com/api/menu/GetMenus';
 
 export async function fetchMenu(params: MenuApiParams): Promise<MenuResponse> {
     try {
-        const response = await axios.get(API_URL, { params });
+        // Create a new object for query parameters
+        const queryParams: Record<string, string> = {};
+
+        // Only add non-empty parameters
+        Object.entries(params).forEach(([key, value]) => {
+            if (value !== "") {
+                queryParams[key] = value;
+            }
+        });
+
+        const response = await axios.get(API_URL, { params: queryParams });
         return response.data;
     } catch (error) {
         console.error('Error fetching menu:', error);

@@ -1,4 +1,3 @@
-// src/index.ts
 import { Client, Events, GatewayIntentBits, Collection } from 'discord.js';
 import { config } from 'dotenv';
 import * as menuCommand from './commands/menu';

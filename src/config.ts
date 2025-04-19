@@ -23,6 +23,7 @@ export const DINING_HALLS = {
     }
 };
 
+// Keep this for reference, but we'll now dynamically fetch periods
 export const MEAL_PERIODS = {
     breakfast: {
         name: "Breakfast",

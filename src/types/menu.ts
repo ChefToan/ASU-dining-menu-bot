@@ -1,5 +1,3 @@
-// Simplified types for the API parameters and responses
-
 export interface MenuApiParams {
     mode: string;
     locationId: string;
@@ -18,6 +16,14 @@ export interface MenuStation {
     Name: string;
 }
 
+export interface MenuPeriod {
+    PeriodId: string;
+    Name: string;
+    IsActive: boolean;
+    UtcMealPeriodStartTime: string;
+    UtcMealPeriodEndTime: string;
+}
+
 export interface MenuResponse {
     Menu?: {
         MenuStations?: MenuStation[];
@@ -25,6 +31,7 @@ export interface MenuResponse {
             StationId: string;
             Product: MenuItem;
         }>;
+        MenuPeriods?: MenuPeriod[];
     };
     Location?: {
         Name: string;
