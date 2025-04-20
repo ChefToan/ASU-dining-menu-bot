@@ -129,7 +129,7 @@ async function gracefulShutdown(signal: string) {
 
         // Clean up Discord client
         await client.destroy();
-        console.log('Discord client destroyed successfully.');
+        // console.log('Discord client destroyed successfully.');
 
         // Exit normally
         process.exit(0);
