@@ -79,18 +79,14 @@ export async function execute(interaction: CommandInteraction) {
                     const startTime = new Date(period.UtcMealPeriodStartTime);
                     const endTime = new Date(period.UtcMealPeriodEndTime);
 
-                    // Convert UTC to MST (UTC-7)
-                    startTime.setHours(startTime.getHours() - 7);
-                    endTime.setHours(endTime.getHours() - 7);
-
-                    // Format times to readable format
+                    // Format times to readable format with MST timezone
                     const formatTime = (date: Date) => {
-                        const hours = date.getHours();
-                        const minutes = date.getMinutes();
-                        const ampm = hours >= 12 ? 'pm' : 'am';
-                        const formattedHours = hours % 12 === 0 ? 12 : hours % 12;
-                        const formattedMinutes = minutes < 10 ? `0${minutes}` : minutes;
-                        return `${formattedHours}:${formattedMinutes}${ampm}`;
+                        return date.toLocaleTimeString('en-US', {
+                            hour: 'numeric',
+                            minute: '2-digit',
+                            hour12: true,
+                            timeZone: 'America/Phoenix' // MST timezone
+                        });
                     };
 
                     const timeRange = `${formatTime(startTime)} to ${formatTime(endTime)}`;
@@ -111,7 +107,7 @@ export async function execute(interaction: CommandInteraction) {
             const mainEmbed = new EmbedBuilder()
                 .setColor(Colors.Blue)
                 .setTitle(`${displayName} Menu`)
-                .setDescription(`Please select a meal period for **${displayName}**.`);
+                .setDescription(`Please select a meal period for ${displayName}.`);
 
             // Create buttons for period selection
             const periodButtons = createPeriodButtons(availablePeriods);

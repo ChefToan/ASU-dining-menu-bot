@@ -107,18 +107,41 @@ const startBot = async () => {
 // Start the bot
 startBot();
 
-// FIX FOR CTRL+C: Handle process signals properly
-process.on('SIGINT', () => {
-    console.log('SIGINT received. Bot is shutting down...');
-    client.destroy();
-    process.exit(0);
-});
+// Fix for graceful shutdown
+let isShuttingDown = false;
 
-process.on('SIGTERM', () => {
-    console.log('SIGTERM received. Bot is shutting down...');
-    client.destroy();
-    process.exit(0);
-});
+// Improved shutdown function with timeout
+async function gracefulShutdown(signal: string) {
+    if (isShuttingDown) return; // Prevent multiple shutdown attempts
+    isShuttingDown = true;
+
+    console.log(`${signal} received. Bot is shutting down...`);
+
+    try {
+        // Set a timeout to force exit after 3 seconds
+        const forceExitTimeout = setTimeout(() => {
+            console.log('Forcing exit after timeout...');
+            process.exit(0);
+        }, 3000);
+
+        // Make sure the timeout is unref'd so it doesn't keep the process alive
+        forceExitTimeout.unref();
+
+        // Clean up Discord client
+        await client.destroy();
+        console.log('Discord client destroyed successfully.');
+
+        // Exit normally
+        process.exit(0);
+    } catch (error) {
+        console.error('Error during shutdown:', error);
+        process.exit(1);
+    }
+}
+
+// Handle process signals properly
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 
 // Handle unhandled rejections and exceptions to prevent crashes
 process.on('unhandledRejection', (error) => {
