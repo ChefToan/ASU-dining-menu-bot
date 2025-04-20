@@ -181,8 +181,9 @@ export async function execute(interaction: CommandInteraction) {
                     // Create station selection embed
                     const stationSelectionEmbed = new EmbedBuilder()
                         .setColor(Colors.Blue)
-                        .setTitle(`${displayName} - ${selectedPeriod.name}`)
-                        .setDescription(`Here are the menu options for ${selectedPeriod.name} at ${displayName} from ${selectedPeriod.timeRange}\n\n` +
+                        // .setTitle(`${displayName} - ${selectedPeriod.name}`)
+                        .setTitle(`${displayName} `)
+                        .setDescription(`Here are the menu options for **${selectedPeriod.name}** at **${displayName}** from **${selectedPeriod.timeRange}**\n\n` +
                             `Please select a station to view available items.`);
 
                     // Create buttons for station selection - using the selectedPeriodId
@@ -261,8 +262,9 @@ export async function execute(interaction: CommandInteraction) {
 
                     const stationMenuEmbed = new EmbedBuilder()
                         .setColor(Colors.Blue)
-                        .setTitle(`${displayName} - ${selectedPeriod.name} - ${stationName}`)
-                        .setDescription(`Here are the menu options for ${selectedPeriod.name} at ${displayName} from ${selectedPeriod.timeRange}\n\n` +
+                        // .setTitle(`${displayName} - ${selectedPeriod.name} - ${stationName}`)
+                        .setTitle(`${displayName}`)
+                        .setDescription(`Here are the menu options for **${selectedPeriod.name}** at **${displayName}** from **${selectedPeriod.timeRange}**\n\n` +
                             `**${stationName}**\n${stationContent}`);
 
                     // Get all stations for this period
