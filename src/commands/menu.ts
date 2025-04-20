@@ -79,6 +79,10 @@ export async function execute(interaction: CommandInteraction) {
                     const startTime = new Date(period.UtcMealPeriodStartTime);
                     const endTime = new Date(period.UtcMealPeriodEndTime);
 
+                    // Convert UTC to MST (UTC-7)
+                    startTime.setHours(startTime.getHours() - 7);
+                    endTime.setHours(endTime.getHours() - 7);
+
                     // Format times to readable format
                     const formatTime = (date: Date) => {
                         const hours = date.getHours();
@@ -107,7 +111,7 @@ export async function execute(interaction: CommandInteraction) {
             const mainEmbed = new EmbedBuilder()
                 .setColor(Colors.Blue)
                 .setTitle(`${displayName} Menu`)
-                .setDescription(`Please select a meal period for ${displayName}.`);
+                .setDescription(`Please select a meal period for **${displayName}**.`);
 
             // Create buttons for period selection
             const periodButtons = createPeriodButtons(availablePeriods);
