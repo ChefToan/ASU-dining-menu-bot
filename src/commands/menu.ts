@@ -51,12 +51,10 @@ export async function execute(interaction: CommandInteraction) {
         let displayName: string;
         if (diningHallOption === 'mu') {
             displayName = 'Pitchforks';
-        } else if (diningHallOption === 'tooker' || diningHallOption === 'barrett' || diningHallOption === 'manzi') {
-            displayName = `${diningHall.name} House`;
         } else {
             displayName = diningHall.name;
         }
-        displayName += ' Dining';
+        displayName += ' Dining Hall';
 
         try {
             // Fetch menu data for any period just to get the available periods
@@ -75,21 +73,27 @@ export async function execute(interaction: CommandInteraction) {
             // Get available periods
             const availablePeriods: Period[] = menuData.Menu.MenuPeriods
                 .map((period: MenuPeriod) => {
-                    // Get time range based on UTC times
-                    const startTime = new Date(period.UtcMealPeriodStartTime);
-                    const endTime = new Date(period.UtcMealPeriodEndTime);
+                    // Parse the UTC time strings to extract hours and minutes
+                    const parseTime = (timeStr: string) => {
+                        // Format is like "2025-04-22 13:00:00Z"
+                        const parts = timeStr.split(' ')[1].split(':');
+                        let hours = parseInt(parts[0], 10);
+                        const minutes = parseInt(parts[1], 10);
 
-                    // Format times to readable format with MST timezone
-                    const formatTime = (date: Date) => {
-                        return date.toLocaleTimeString('en-US', {
-                            hour: 'numeric',
-                            minute: '2-digit',
-                            hour12: true,
-                            timeZone: 'America/Phoenix' // MST timezone
-                        });
+                        // Convert from UTC to Mountain Time (UTC-6)
+                        hours = (hours - 6 + 24) % 24;
+
+                        // Format the time string with AM/PM
+                        const period = hours >= 12 ? 'PM' : 'AM';
+                        hours = hours % 12;
+                        hours = hours === 0 ? 12 : hours; // Convert 0 to 12 for 12-hour format
+
+                        return `${hours}:${minutes.toString().padStart(2, '0')} ${period}`;
                     };
 
-                    const timeRange = `${formatTime(startTime)} to ${formatTime(endTime)}`;
+                    const startTime = parseTime(period.UtcMealPeriodStartTime);
+                    const endTime = parseTime(period.UtcMealPeriodEndTime);
+                    const timeRange = `${startTime} to ${endTime}`;
 
                     return {
                         id: period.PeriodId,
@@ -103,10 +107,17 @@ export async function execute(interaction: CommandInteraction) {
                 return;
             }
 
+            // Format the date for display
+            const formattedDisplayDate = today.toLocaleDateString('en-US', {
+                month: 'long',
+                day: 'numeric',
+                year: 'numeric'
+            });
+
             // Create initial embed
             const mainEmbed = new EmbedBuilder()
                 .setColor(Colors.Blue)
-                .setTitle(`${displayName} Menu`)
+                .setTitle(`${displayName} Menu - ${formattedDisplayDate}`)
                 .setDescription(`Please select a meal period for ${displayName}.`);
 
             // Create buttons for period selection
@@ -181,8 +192,7 @@ export async function execute(interaction: CommandInteraction) {
                     // Create station selection embed
                     const stationSelectionEmbed = new EmbedBuilder()
                         .setColor(Colors.Blue)
-                        // .setTitle(`${displayName} - ${selectedPeriod.name}`)
-                        .setTitle(`${displayName} `)
+                        .setTitle(`${displayName} - ${formattedDisplayDate}`)
                         .setDescription(`Here are the menu options for **${selectedPeriod.name}** at **${displayName}** from **${selectedPeriod.timeRange}**\n\n` +
                             `Please select a station to view available items.`);
 
@@ -262,8 +272,7 @@ export async function execute(interaction: CommandInteraction) {
 
                     const stationMenuEmbed = new EmbedBuilder()
                         .setColor(Colors.Blue)
-                        // .setTitle(`${displayName} - ${selectedPeriod.name} - ${stationName}`)
-                        .setTitle(`${displayName}`)
+                        .setTitle(`${displayName} - ${formattedDisplayDate}`)
                         .setDescription(`Here are the menu options for **${selectedPeriod.name}** at **${displayName}** from **${selectedPeriod.timeRange}**\n\n` +
                             `**${stationName}**\n${stationContent}`);
 
