@@ -10,9 +10,8 @@ import {
     ButtonInteraction
 } from 'discord.js';
 import { fetchMenu, organizeMenuByStation, getStationNames } from '../utils/api';
-import { searchDishImage } from '../utils/ImageSearch'; // New image search utility
 import { DINING_HALLS } from '../config';
-import {MenuItem, MenuPeriod, MenuResponse} from '../types/menu';
+import { MenuPeriod, MenuResponse } from '../types/menu';
 
 // Define a Period interface for use in our code
 interface Period {
@@ -30,16 +29,11 @@ export const data = new SlashCommandBuilder()
             .setRequired(true)
             .addChoices(
                 { name: 'Barrett', value: 'barrett' },
-                { name: 'Manzy', value: 'manzy' },
+                { name: 'Manzi', value: 'manzi' },
                 { name: 'Hassay', value: 'hassay' },
                 { name: 'Tooker', value: 'tooker' },
-                { name: 'Pitchforks', value: 'mu' }
+                { name: 'MU', value: 'mu' }
             )
-    )
-    .addStringOption(option =>
-        option.setName('date')
-            .setDescription('Date in MM/DD/YYYY format (defaults to today)')
-            .setRequired(false)
     );
 
 export async function execute(interaction: CommandInteraction) {
@@ -48,49 +42,21 @@ export async function execute(interaction: CommandInteraction) {
 
         const diningHallOption = interaction.options.get('dining_hall')?.value as string;
         const diningHall = DINING_HALLS[diningHallOption as keyof typeof DINING_HALLS];
-        const dateOption = interaction.options.get('date')?.value as string;
 
-        // Get current date and format it
+        // Get current date in MM/DD/YYYY format
         const today = new Date();
-        let targetDate = new Date(today);
-        let dateDisplayStr = "today";
+        const formattedDate = `${today.getMonth() + 1}/${today.getDate()}/${today.getFullYear()}`;
 
-        // Handle date option if provided
-        if (dateOption) {
-            // Validate custom date format MM/DD/YYYY
-            const dateRegex = /^(0[1-9]|1[0-2])\/(0[1-9]|[12][0-9]|3[01])\/(20\d{2})$/;
-            if (!dateRegex.test(dateOption)) {
-                await interaction.editReply('Invalid date format. Please use MM/DD/YYYY format.');
-                return;
-            }
-
-            const [month, day, year] = dateOption.split('/').map(part => parseInt(part, 10));
-            const customDate = new Date(year, month - 1, day);
-
-            // Validate if the date is within the next 7 days
-            const maxDate = new Date(today);
-            maxDate.setDate(today.getDate() + 7);
-
-            if (customDate < today || customDate > maxDate) {
-                await interaction.editReply('Date must be between today and 7 days from now.');
-                return;
-            }
-
-            targetDate = customDate;
-            dateDisplayStr = dateOption;
-        }
-
-        // Format the date in MM/DD/YYYY format
-        const formattedDate = `${targetDate.getMonth() + 1}/${targetDate.getDate()}/${targetDate.getFullYear()}`;
-
-        // Format dining hall name according to new specifications
+        // Format dining hall name according to specifications
         let displayName: string;
         if (diningHallOption === 'mu') {
             displayName = 'Pitchforks';
+        } else if (diningHallOption === 'tooker' || diningHallOption === 'barrett' || diningHallOption === 'manzi') {
+            displayName = `${diningHall.name} House`;
         } else {
             displayName = diningHall.name;
         }
-        displayName += ' Dining Hall';
+        displayName += ' Dining';
 
         try {
             // Fetch menu data for any period just to get the available periods
@@ -102,7 +68,7 @@ export async function execute(interaction: CommandInteraction) {
             });
 
             if (!menuData.Menu || !menuData.Menu.MenuPeriods || menuData.Menu.MenuPeriods.length === 0) {
-                await interaction.editReply(`No menu available for ${displayName} ${dateDisplayStr}.`);
+                await interaction.editReply(`No menu available for ${displayName} today.`);
                 return;
             }
 
@@ -133,7 +99,7 @@ export async function execute(interaction: CommandInteraction) {
                 });
 
             if (availablePeriods.length === 0) {
-                await interaction.editReply(`No meal periods available for ${displayName} ${dateDisplayStr}.`);
+                await interaction.editReply(`No meal periods available for ${displayName} today.`);
                 return;
             }
 
@@ -141,7 +107,7 @@ export async function execute(interaction: CommandInteraction) {
             const mainEmbed = new EmbedBuilder()
                 .setColor(Colors.Blue)
                 .setTitle(`${displayName} Menu`)
-                .setDescription(`Please select a meal period for ${displayName} ${dateDisplayStr}.`);
+                .setDescription(`Please select a meal period for ${displayName}.`);
 
             // Create buttons for period selection
             const periodButtons = createPeriodButtons(availablePeriods);
@@ -191,7 +157,7 @@ export async function execute(interaction: CommandInteraction) {
 
                     if (!periodMenuData.Menu || !periodMenuData.Menu.MenuStations || !periodMenuData.Menu.MenuProducts) {
                         await buttonInteraction.followUp({
-                            content: `No menu available for ${displayName} ${selectedPeriod.name} ${dateDisplayStr}.`,
+                            content: `No menu available for ${displayName} ${selectedPeriod.name} today.`,
                             ephemeral: true
                         });
                         return;
@@ -206,7 +172,7 @@ export async function execute(interaction: CommandInteraction) {
 
                     if (nonEmptyStations.length === 0) {
                         await buttonInteraction.followUp({
-                            content: `No menu items available for ${displayName} ${selectedPeriod.name} ${dateDisplayStr}.`,
+                            content: `No menu items available for ${displayName} ${selectedPeriod.name} today.`,
                             ephemeral: true
                         });
                         return;
@@ -215,7 +181,8 @@ export async function execute(interaction: CommandInteraction) {
                     // Create station selection embed
                     const stationSelectionEmbed = new EmbedBuilder()
                         .setColor(Colors.Blue)
-                        .setTitle(`${displayName}`)
+                        // .setTitle(`${displayName} - ${selectedPeriod.name}`)
+                        .setTitle(`${displayName} `)
                         .setDescription(`Here are the menu options for **${selectedPeriod.name}** at **${displayName}** from **${selectedPeriod.timeRange}**\n\n` +
                             `Please select a station to view available items.`);
 
@@ -270,7 +237,7 @@ export async function execute(interaction: CommandInteraction) {
 
                     if (!periodMenuData.Menu || !periodMenuData.Menu.MenuStations || !periodMenuData.Menu.MenuProducts) {
                         await buttonInteraction.followUp({
-                            content: `No menu available for ${displayName} ${selectedPeriod.name} ${dateDisplayStr}.`,
+                            content: `No menu available for ${displayName} ${selectedPeriod.name} today.`,
                             ephemeral: true
                         });
                         return;
@@ -286,88 +253,31 @@ export async function execute(interaction: CommandInteraction) {
                     // Update the main embed with the station items
                     let stationContent = '';
                     if (stationItems.length > 0) {
-                        // Add all menu items to content
                         stationItems.forEach(item => {
                             stationContent += `• ${item.MarketingName}\n`;
                         });
-
-                        // Create embed without image
-                        const stationMenuEmbed = new EmbedBuilder()
-                            .setColor(Colors.Blue)
-                            .setTitle(`${displayName}`)
-                            .setDescription(`Here are the menu options for **${selectedPeriod.name}** at **${displayName}** from **${selectedPeriod.timeRange}**\n\n` +
-                                `**${stationName}**\n${stationContent}`);
-
-                        // Get all stations for this period
-                        const nonEmptyStations = Array.from(stationNames.entries())
-                            .filter(([sId]) => (stationMap.get(sId) || []).length > 0);
-
-                        // Create the station buttons
-                        const stationButtons = createStationButtons(nonEmptyStations, periodId, stationId);
-
-                        // Only try to load an image for small menus (3 or fewer items)
-                        if (stationItems.length <= 3) {
-                            // First display without image
-                            await buttonInteraction.editReply({
-                                embeds: [stationMenuEmbed],
-                                components: stationButtons
-                            });
-
-                            // Try to load an image in the background
-                            try {
-                                // Only fetch image for small menus
-                                const mainDish = identifyMainDish(stationItems);
-                                let imageUrl = '';
-
-                                if (mainDish) {
-                                    imageUrl = await searchDishImage(`${mainDish.MarketingName}`);
-                                } else {
-                                    // Use first item if no main dish identified
-                                    imageUrl = await searchDishImage(`${stationItems[0].MarketingName}`);
-                                }
-
-                                // Only update with image if we got a real one (not placeholder)
-                                if (imageUrl && !imageUrl.includes('placeholder.com')) {
-                                    // Update embed with the image now that it's loaded
-                                    stationMenuEmbed.setImage(imageUrl);
-
-                                    await buttonInteraction.editReply({
-                                        embeds: [stationMenuEmbed],
-                                        components: stationButtons
-                                    });
-                                }
-                            } catch (error) {
-                                console.error('Error fetching image:', error);
-                                // Continue without an image if there's an error
-                            }
-                        } else {
-                            // For larger menus, just display without image
-                            await buttonInteraction.editReply({
-                                embeds: [stationMenuEmbed],
-                                components: stationButtons
-                            });
-                        }
                     } else {
                         stationContent = 'No items available at this station.';
-
-                        const stationMenuEmbed = new EmbedBuilder()
-                            .setColor(Colors.Blue)
-                            .setTitle(`${displayName}`)
-                            .setDescription(`Here are the menu options for **${selectedPeriod.name}** at **${displayName}** from **${selectedPeriod.timeRange}**\n\n` +
-                                `**${stationName}**\n${stationContent}`);
-
-                        // Get all stations for this period
-                        const nonEmptyStations = Array.from(stationNames.entries())
-                            .filter(([sId]) => (stationMap.get(sId) || []).length > 0);
-
-                        // Recreate the station buttons with the current station highlighted
-                        const stationButtons = createStationButtons(nonEmptyStations, periodId, stationId);
-
-                        await buttonInteraction.editReply({
-                            embeds: [stationMenuEmbed],
-                            components: stationButtons
-                        });
                     }
+
+                    const stationMenuEmbed = new EmbedBuilder()
+                        .setColor(Colors.Blue)
+                        // .setTitle(`${displayName} - ${selectedPeriod.name} - ${stationName}`)
+                        .setTitle(`${displayName}`)
+                        .setDescription(`Here are the menu options for **${selectedPeriod.name}** at **${displayName}** from **${selectedPeriod.timeRange}**\n\n` +
+                            `**${stationName}**\n${stationContent}`);
+
+                    // Get all stations for this period
+                    const nonEmptyStations = Array.from(stationNames.entries())
+                        .filter(([sId]) => (stationMap.get(sId) || []).length > 0);
+
+                    // Recreate the station buttons with the current station highlighted
+                    const stationButtons = createStationButtons(nonEmptyStations, periodId, stationId);
+
+                    await buttonInteraction.editReply({
+                        embeds: [stationMenuEmbed],
+                        components: stationButtons
+                    });
                 }
                 // Handle back to period selection
                 else if (buttonInteraction.customId === 'back_to_periods') {
@@ -471,8 +381,8 @@ function createStationButtons(stations: [string, string][], periodId?: string, a
                 new ButtonBuilder()
                     .setCustomId(customId)
                     .setLabel(stationName)
-                    // Use Success style (green) for active station, Primary (blue) for others
-                    .setStyle(isActive ? ButtonStyle.Success : ButtonStyle.Primary)
+                    // Always use Primary style (blue) for station buttons
+                    .setStyle(ButtonStyle.Primary)
             );
         }
 
@@ -493,69 +403,4 @@ function createStationButtons(stations: [string, string][], periodId?: string, a
     }
 
     return rows;
-}
-
-// Helper function to identify the main dish in a list of menu items
-function identifyMainDish(items: MenuItem[]): MenuItem | null {
-    if (!items || items.length === 0) {
-        return null;
-    }
-
-    // If there's only one item, it's the main dish
-    if (items.length === 1) {
-        return items[0];
-    }
-
-    // Keywords that typically indicate main dishes
-    const mainDishKeywords = [
-        'entrée', 'entree', 'main', 'special', 'signature', 'chef',
-        'featured', 'specialty', 'house', 'grill', 'roast', 'baked',
-        'steak', 'chicken', 'fish', 'burger', 'sandwich', 'pizza',
-        'pasta', 'bowl', 'plate', 'combo', 'meal', 'platter'
-    ];
-
-    // Side dish or accompaniment keywords
-    const sideDishKeywords = [
-        'side', 'sauce', 'dressing', 'topping', 'garnish', 'condiment',
-        'dip', 'spread', 'chips', 'fries', 'salad', 'soup', 'roll',
-        'bread', 'biscuit', 'muffin', 'dessert', 'cookie', 'brownie',
-        'cake', 'pastry', 'fruit', 'vegetable'
-    ];
-
-    // Score each item based on keywords and name length
-    // (main dishes often have longer, more descriptive names)
-    const scoredItems = items.map(item => {
-        let score = 0;
-        const lowerName = item.MarketingName.toLowerCase();
-
-        // Check for main dish keywords
-        mainDishKeywords.forEach(keyword => {
-            if (lowerName.includes(keyword.toLowerCase())) {
-                score += 2;
-            }
-        });
-
-        // Penalize for side dish keywords
-        sideDishKeywords.forEach(keyword => {
-            if (lowerName.includes(keyword.toLowerCase())) {
-                score -= 1;
-            }
-        });
-
-        // Slightly favor items with longer names (often main dishes)
-        score += item.MarketingName.length / 50;
-
-        return { item, score };
-    });
-
-    // Sort by score and get the highest
-    scoredItems.sort((a, b) => b.score - a.score);
-
-    // If the highest score is positive, return that item
-    if (scoredItems[0].score > 0) {
-        return scoredItems[0].item;
-    }
-
-    // If we couldn't confidently identify a main dish, return null
-    return null;
 }

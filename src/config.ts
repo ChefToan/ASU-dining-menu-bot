@@ -5,9 +5,9 @@ export const DINING_HALLS = {
         name: "Barrett",
         id: DiningHallId.Barrett
     },
-    manzy: { // Changed from manzi to manzy
-        name: "Manzy", // Changed from Manzi to Manzy
-        id: DiningHallId.Manzy // Changed to match enum name
+    manzi: {
+        name: "Manzi",
+        id: DiningHallId.Manzi
     },
     hassay: {
         name: "Hassay",
@@ -18,7 +18,7 @@ export const DINING_HALLS = {
         id: DiningHallId.Tooker
     },
     mu: {
-        name: "Pitchforks", // Changed from MU to Pitchforks for better clarity
+        name: "MU",
         id: DiningHallId.MU
     }
 };
