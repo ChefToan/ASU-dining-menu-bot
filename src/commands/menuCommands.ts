@@ -130,17 +130,17 @@ export async function execute(interaction: CommandInteraction) {
             }
 
             // Format the date for display
-            const formattedDisplayDate = displayDate.toLocaleDateString('en-US', {
-                month: 'long',
-                day: 'numeric',
-                year: 'numeric'
-            });
+            const month = (displayDate.getMonth() + 1).toString().padStart(2, '0');
+            const day = displayDate.getDate().toString().padStart(2, '0');
+            const year = displayDate.getFullYear();
+            const weekday = displayDate.toLocaleDateString('en-US', { weekday: 'short' });
+            const formattedDisplayDate = `${month}/${day}/${year} (${weekday})`;
 
             // Create initial embed
             const mainEmbed = new EmbedBuilder()
                 .setColor(Colors.Blue)
                 .setTitle(`${displayName} Menu - ${formattedDisplayDate}`)
-                .setDescription(`Please select a meal period for ${displayName}.`);
+                .setDescription(`Please select a meal period`);
 
             // Create buttons for period selection
             const periodButtons = createPeriodButtons(availablePeriods);
