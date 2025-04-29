@@ -34,6 +34,11 @@ export const data = new SlashCommandBuilder()
                 { name: 'Tooker', value: 'tooker' },
                 { name: 'MU', value: 'mu' }
             )
+    )
+    .addStringOption(option =>
+        option.setName('date')
+            .setDescription('Date in MM/DD/YYYY format (default: today)')
+            .setRequired(false)
     );
 
 export async function execute(interaction: CommandInteraction) {
@@ -43,9 +48,26 @@ export async function execute(interaction: CommandInteraction) {
         const diningHallOption = interaction.options.get('dining_hall')?.value as string;
         const diningHall = DINING_HALLS[diningHallOption as keyof typeof DINING_HALLS];
 
-        // Get current date in MM/DD/YYYY format
-        const today = new Date();
-        const formattedDate = `${today.getMonth() + 1}/${today.getDate()}/${today.getFullYear()}`;
+        // Check for date option
+        const dateOption = interaction.options.get('date')?.value as string;
+        let formattedDate: string;
+        let displayDate: Date;
+
+        if (dateOption) {
+            // Validate date format (MM/DD/YYYY)
+            const dateRegex = /^(0[1-9]|1[0-2])\/(0[1-9]|[12][0-9]|3[01])\/\d{4}$/;
+            if (!dateRegex.test(dateOption)) {
+                await interaction.editReply('Invalid date format. Please use MM/DD/YYYY format.');
+                return;
+            }
+            formattedDate = dateOption;
+            const [month, day, year] = dateOption.split('/').map(num => parseInt(num, 10));
+            displayDate = new Date(year, month - 1, day);
+        } else {
+            // Get current date in MM/DD/YYYY format
+            displayDate = new Date();
+            formattedDate = `${displayDate.getMonth() + 1}/${displayDate.getDate()}/${displayDate.getFullYear()}`;
+        }
 
         // Format dining hall name according to specifications
         let displayName: string;
@@ -66,7 +88,7 @@ export async function execute(interaction: CommandInteraction) {
             });
 
             if (!menuData.Menu || !menuData.Menu.MenuPeriods || menuData.Menu.MenuPeriods.length === 0) {
-                await interaction.editReply(`No menu available for ${displayName} today.`);
+                await interaction.editReply(`No menu available for ${displayName} on ${formattedDate}.`);
                 return;
             }
 
@@ -103,12 +125,12 @@ export async function execute(interaction: CommandInteraction) {
                 });
 
             if (availablePeriods.length === 0) {
-                await interaction.editReply(`No meal periods available for ${displayName} today.`);
+                await interaction.editReply(`No meal periods available for ${displayName} on ${formattedDate}.`);
                 return;
             }
 
             // Format the date for display
-            const formattedDisplayDate = today.toLocaleDateString('en-US', {
+            const formattedDisplayDate = displayDate.toLocaleDateString('en-US', {
                 month: 'long',
                 day: 'numeric',
                 year: 'numeric'
@@ -128,10 +150,11 @@ export async function execute(interaction: CommandInteraction) {
                 components: periodButtons
             });
 
-            // Create collector for period selection (no timeout)
+            // Create collector for period selection with 10 minute timeout
             const message = await interaction.fetchReply();
             const collector = message.createMessageComponentCollector({
-                componentType: ComponentType.Button
+                componentType: ComponentType.Button,
+                time: 10 * 60 * 1000 // 10 minute timeout
             });
 
             // Store current state to track the active period
@@ -168,7 +191,7 @@ export async function execute(interaction: CommandInteraction) {
 
                     if (!periodMenuData.Menu || !periodMenuData.Menu.MenuStations || !periodMenuData.Menu.MenuProducts) {
                         await buttonInteraction.followUp({
-                            content: `No menu available for ${displayName} ${selectedPeriod.name} today.`,
+                            content: `No menu available for ${displayName} ${selectedPeriod.name} on ${formattedDisplayDate}.`,
                             ephemeral: true
                         });
                         return;
@@ -183,7 +206,7 @@ export async function execute(interaction: CommandInteraction) {
 
                     if (nonEmptyStations.length === 0) {
                         await buttonInteraction.followUp({
-                            content: `No menu items available for ${displayName} ${selectedPeriod.name} today.`,
+                            content: `No menu items available for ${displayName} ${selectedPeriod.name} on ${formattedDisplayDate}.`,
                             ephemeral: true
                         });
                         return;
@@ -247,7 +270,7 @@ export async function execute(interaction: CommandInteraction) {
 
                     if (!periodMenuData.Menu || !periodMenuData.Menu.MenuStations || !periodMenuData.Menu.MenuProducts) {
                         await buttonInteraction.followUp({
-                            content: `No menu available for ${displayName} ${selectedPeriod.name} today.`,
+                            content: `No menu available for ${displayName} ${selectedPeriod.name} on ${formattedDisplayDate}.`,
                             ephemeral: true
                         });
                         return;
@@ -297,15 +320,19 @@ export async function execute(interaction: CommandInteraction) {
                 }
             });
 
-            // Keep the end handler in case the collector stops for other reasons
+            // Fix for the collector end handler
             collector.on('end', () => {
-                // Only runs if the collector is stopped for some reason
-                // (like bot restart or manual stop)
-                interaction.editReply({
-                    components: []
-                }).catch(() => {
-                    console.log('Could not remove components after collector end');
-                });
+                // Check if the interaction is still valid before attempting to remove components
+                try {
+                    if (interaction.replied || interaction.deferred) {
+                        interaction.editReply({ components: [] })
+                            .catch((error) => {
+                                console.error('Could not remove components after collector end:', error);
+                            });
+                    }
+                } catch (error) {
+                    console.error('Error in collector end handler:', error);
+                }
             });
 
         } catch (error) {

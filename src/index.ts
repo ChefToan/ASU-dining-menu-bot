@@ -1,6 +1,6 @@
 import { Client, Events, GatewayIntentBits, Collection } from 'discord.js';
 import { config } from 'dotenv';
-import * as menuCommand from './commands/menu';
+import * as menuCommand from './commands/menuCommands';
 import { REST, Routes } from 'discord.js';
 
 // Load environment variables
