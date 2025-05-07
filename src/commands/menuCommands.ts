@@ -150,11 +150,11 @@ export async function execute(interaction: CommandInteraction) {
                 components: periodButtons
             });
 
-            // Create collector for period selection with 10 minute timeout
+            // Create collector for period selection without a timeout
             const message = await interaction.fetchReply();
             const collector = message.createMessageComponentCollector({
                 componentType: ComponentType.Button,
-                time: 10 * 60 * 1000 // 10 minute timeout
+                time: 10 * 60 * 1000 // 10 minutes
             });
 
             // Store current state to track the active period
@@ -163,6 +163,15 @@ export async function execute(interaction: CommandInteraction) {
 
             collector.on('collect', async (buttonInteraction: ButtonInteraction) => {
                 await buttonInteraction.deferUpdate();
+
+                // Handle refresh button
+                if (buttonInteraction.customId === 'refresh_menu') {
+                    await buttonInteraction.editReply({
+                        embeds: [mainEmbed],
+                        components: periodButtons
+                    });
+                    return;
+                }
 
                 // Handle period selection
                 if (buttonInteraction.customId.startsWith('period_')) {
@@ -320,14 +329,24 @@ export async function execute(interaction: CommandInteraction) {
                 }
             });
 
-            // Fix for the collector end handler
+            // Modified collector end handler to add a refresh button
             collector.on('end', () => {
-                // Check if the interaction is still valid before attempting to remove components
+                // Check if the interaction is still valid before attempting to modify components
                 try {
                     if (interaction.replied || interaction.deferred) {
-                        interaction.editReply({ components: [] })
+                        // Create a refresh button
+                        const refreshRow = new ActionRowBuilder<ButtonBuilder>()
+                            .addComponents(
+                                new ButtonBuilder()
+                                    .setCustomId('refresh_menu')
+                                    .setLabel('Refresh (for station options)')
+                                    .setStyle(ButtonStyle.Secondary)
+                            );
+
+                        // Update the message with the refresh button
+                        interaction.editReply({ components: [refreshRow] })
                             .catch((error) => {
-                                console.error('Could not remove components after collector end:', error);
+                                console.error('Could not add refresh button after collector end:', error);
                             });
                     }
                 } catch (error) {

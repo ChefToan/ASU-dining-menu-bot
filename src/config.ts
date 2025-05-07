@@ -46,3 +46,15 @@ export const MEAL_PERIODS = {
         id: MealPeriodId.Brunch
     }
 };
+
+// Cache configuration
+export const CACHE_CONFIG = {
+    // Default TTL (Time-to-live) for cache entries in milliseconds
+    DEFAULT_TTL: 24 * 60 * 60 * 1000, // 30 minutes
+
+    // Whether to auto-clean expired cache entries periodically
+    AUTO_CLEAN: true,
+
+    // Interval for auto-cleaning in milliseconds (every hour)
+    CLEAN_INTERVAL: 60 * 60 * 1000
+};

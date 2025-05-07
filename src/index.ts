@@ -2,6 +2,7 @@ import { Client, Events, GatewayIntentBits, Collection } from 'discord.js';
 import { config } from 'dotenv';
 import * as menuCommand from './commands/menuCommands';
 import { REST, Routes } from 'discord.js';
+import { setupCacheCleaner, stopCacheCleaner } from './utils/cacheManager';
 
 // Load environment variables
 config();
@@ -27,9 +28,15 @@ client.commands = new Collection();
 // Add commands to the collection
 client.commands.set(menuCommand.data.name, menuCommand);
 
+// Store the cache cleaner interval for cleanup on shutdown
+let cacheCleaner: NodeJS.Timeout | null = null;
+
 // When the client is ready, run this code
 client.once(Events.ClientReady, (readyClient) => {
     console.log(`Ready! Logged in as ${readyClient.user.tag}`);
+
+    // Start the cache cleaner
+    cacheCleaner = setupCacheCleaner();
 });
 
 // Handle interaction create events with comprehensive error handling
@@ -118,6 +125,11 @@ async function gracefulShutdown(signal: string) {
     console.log(`${signal} received. Bot is shutting down...`);
 
     try {
+        // Stop the cache cleaner
+        if (cacheCleaner) {
+            stopCacheCleaner(cacheCleaner);
+        }
+
         // Set a timeout to force exit after 3 seconds
         const forceExitTimeout = setTimeout(() => {
             console.log('Forcing exit after timeout...');
@@ -132,7 +144,7 @@ async function gracefulShutdown(signal: string) {
         // console.log('Discord client destroyed successfully.');
 
         // Exit normally
-        process.exit(0);
+        process.kill(process.pid, 'SIGINT');
     } catch (error) {
         console.error('Error during shutdown:', error);
         process.exit(1);
