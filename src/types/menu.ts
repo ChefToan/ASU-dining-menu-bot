@@ -20,8 +20,8 @@ export interface MenuPeriod {
     PeriodId: string;
     Name: string;
     IsActive: boolean;
-    UtcMealPeriodStartTime: string;
-    UtcMealPeriodEndTime: string;
+    UtcMealPeriodStartTime?: string; // Made optional with ?
+    UtcMealPeriodEndTime?: string;   // Made optional with ?
 }
 
 export interface MenuResponse {

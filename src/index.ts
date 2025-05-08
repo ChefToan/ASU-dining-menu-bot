@@ -3,6 +3,7 @@ import { config } from 'dotenv';
 import * as menuCommand from './commands/menuCommands';
 import { REST, Routes } from 'discord.js';
 import { setupCacheCleaner, stopCacheCleaner } from './utils/cacheManager';
+import { clearMenuCache } from './utils/api';
 
 // Load environment variables
 config();
@@ -95,6 +96,10 @@ const registerCommands = async () => {
 // Start the bot with maximum error handling
 const startBot = async () => {
     try {
+        // Clear the cache on startup to ensure fresh data
+        clearMenuCache();
+        console.log('Menu cache cleared for fresh data.');
+
         // Try to register commands but continue even if it fails
         await registerCommands().catch(error => {
             console.error('Command registration failed, but continuing:', error);

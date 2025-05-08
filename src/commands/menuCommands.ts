@@ -18,6 +18,7 @@ interface Period {
     id: string;
     name: string;
     timeRange: string;
+    hasValidTime: boolean; // Flag to track if time data is valid
 }
 
 export const data = new SlashCommandBuilder()
@@ -87,7 +88,7 @@ export async function execute(interaction: CommandInteraction) {
                 periodId: "" // Empty to get all periods
             });
 
-            if (!menuData.Menu || !menuData.Menu.MenuPeriods || menuData.Menu.MenuPeriods.length === 0) {
+            if (!menuData.Menu || !Array.isArray(menuData.Menu.MenuPeriods) || menuData.Menu.MenuPeriods.length === 0) {
                 await interaction.editReply(`No menu available for ${displayName} on ${formattedDate}.`);
                 return;
             }
@@ -96,31 +97,61 @@ export async function execute(interaction: CommandInteraction) {
             const availablePeriods: Period[] = menuData.Menu.MenuPeriods
                 .map((period: MenuPeriod) => {
                     // Parse the UTC time strings to extract hours and minutes
-                    const parseTime = (timeStr: string) => {
-                        // Format is like "2025-04-22 13:00:00Z"
-                        const parts = timeStr.split(' ')[1].split(':');
-                        let hours = parseInt(parts[0], 10);
-                        const minutes = parseInt(parts[1], 10);
+                    const parseTime = (timeStr: string | undefined): { timeString: string, isValid: boolean } => {
+                        // Handle undefined or empty time strings
+                        if (!timeStr) {
+                            return { timeString: "Time unavailable", isValid: false };
+                        }
 
-                        // Convert from UTC to Mountain Time (UTC-6)
-                        hours = (hours - 6 + 24) % 24;
+                        try {
+                            // Format is like "2025-04-22 13:00:00Z"
+                            const parts = timeStr.split(' ');
+                            if (parts.length < 2) {
+                                return { timeString: "Invalid format", isValid: false };
+                            }
 
-                        // Format the time string with AM/PM
-                        const period = hours >= 12 ? 'PM' : 'AM';
-                        hours = hours % 12;
-                        hours = hours === 0 ? 12 : hours; // Convert 0 to 12 for 12-hour format
+                            const timeParts = parts[1].split(':');
+                            if (timeParts.length < 2) {
+                                return { timeString: "Invalid time format", isValid: false };
+                            }
 
-                        return `${hours}:${minutes.toString().padStart(2, '0')} ${period}`;
+                            let hours = parseInt(timeParts[0], 10);
+                            const minutes = parseInt(timeParts[1], 10);
+
+                            if (isNaN(hours) || isNaN(minutes)) {
+                                return { timeString: "Invalid time", isValid: false };
+                            }
+
+                            // Convert from UTC to Mountain Time (UTC-6)
+                            hours = (hours - 6 + 24) % 24;
+
+                            // Format the time string with AM/PM
+                            const period = hours >= 12 ? 'PM' : 'AM';
+                            hours = hours % 12;
+                            hours = hours === 0 ? 12 : hours; // Convert 0 to 12 for 12-hour format
+
+                            return {
+                                timeString: `${hours}:${minutes.toString().padStart(2, '0')} ${period}`,
+                                isValid: true
+                            };
+                        } catch (error) {
+                            console.error("Error parsing time:", timeStr, error);
+                            return { timeString: "Time processing error", isValid: false };
+                        }
                     };
 
-                    const startTime = parseTime(period.UtcMealPeriodStartTime);
-                    const endTime = parseTime(period.UtcMealPeriodEndTime);
-                    const timeRange = `${startTime} to ${endTime}`;
+                    const startTimeResult = parseTime(period.UtcMealPeriodStartTime);
+                    const endTimeResult = parseTime(period.UtcMealPeriodEndTime);
+                    const timeRange = `${startTimeResult.timeString} to ${endTimeResult.timeString}`;
+
+                    // Only consider time valid if both start and end times are valid
+                    const hasValidTime = startTimeResult.isValid && endTimeResult.isValid;
 
                     return {
                         id: period.PeriodId,
                         name: period.Name,
-                        timeRange
+                        timeRange,
+                        hasValidTime
                     };
                 });
 
@@ -221,12 +252,18 @@ export async function execute(interaction: CommandInteraction) {
                         return;
                     }
 
+                    // Create description based on whether time is valid
+                    let description = `Here are the menu options for **${selectedPeriod.name}** at **${displayName}**`;
+                    if (selectedPeriod.hasValidTime) {
+                        description += ` from **${selectedPeriod.timeRange}**`;
+                    }
+                    description += `\n\nPlease select a station to view available items.`;
+
                     // Create station selection embed
                     const stationSelectionEmbed = new EmbedBuilder()
                         .setColor(Colors.Blue)
                         .setTitle(`${displayName} - ${formattedDisplayDate}`)
-                        .setDescription(`Here are the menu options for **${selectedPeriod.name}** at **${displayName}** from **${selectedPeriod.timeRange}**\n\n` +
-                            `Please select a station to view available items.`);
+                        .setDescription(description);
 
                     // Create buttons for station selection - using the selectedPeriodId
                     const stationButtons = createStationButtons(nonEmptyStations, selectedPeriodId);
@@ -302,11 +339,17 @@ export async function execute(interaction: CommandInteraction) {
                         stationContent = 'No items available at this station.';
                     }
 
+                    // Create description based on whether time is valid
+                    let description = `Here are the menu options for **${selectedPeriod.name}** at **${displayName}**`;
+                    if (selectedPeriod.hasValidTime) {
+                        description += ` from **${selectedPeriod.timeRange}**`;
+                    }
+                    description += `\n\n**${stationName}**\n${stationContent}`;
+
                     const stationMenuEmbed = new EmbedBuilder()
                         .setColor(Colors.Blue)
                         .setTitle(`${displayName} - ${formattedDisplayDate}`)
-                        .setDescription(`Here are the menu options for **${selectedPeriod.name}** at **${displayName}** from **${selectedPeriod.timeRange}**\n\n` +
-                            `**${stationName}**\n${stationContent}`);
+                        .setDescription(description);
 
                     // Get all stations for this period
                     const nonEmptyStations = Array.from(stationNames.entries())

@@ -29,12 +29,16 @@ export async function fetchMenu(params: MenuApiParams): Promise<MenuResponse> {
         console.log(`Cache miss for ${cacheKey}, fetching from API...`);
         // If not in cache, fetch from API
         const response = await axios.get(API_URL, { params: queryParams });
-        const menuData = response.data;
 
-        // Store in cache
-        cache.set(cacheKey, menuData);
-
-        return menuData;
+        // Validate response before caching
+        if (response.data && response.data.Menu) {
+            // Store in cache
+            cache.set(cacheKey, response.data);
+            return response.data;
+        } else {
+            console.warn("Invalid menu data format received from API:", response.data);
+            return response.data; // Return anyway, but don't cache
+        }
     } catch (error) {
         console.error('Error fetching menu:', error);
         throw error;
