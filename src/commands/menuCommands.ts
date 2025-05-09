@@ -372,7 +372,7 @@ export async function execute(interaction: CommandInteraction) {
                 }
             });
 
-            // Modified collector end handler to add a refresh button
+            // Modified collector end handler with improved refresh button functionality
             collector.on('end', () => {
                 // Check if the interaction is still valid before attempting to modify components
                 try {
@@ -382,12 +382,342 @@ export async function execute(interaction: CommandInteraction) {
                             .addComponents(
                                 new ButtonBuilder()
                                     .setCustomId('refresh_menu')
-                                    .setLabel('Refresh (for station options)')
+                                    .setLabel('Refresh Menu')
                                     .setStyle(ButtonStyle.Secondary)
                             );
 
                         // Update the message with the refresh button
                         interaction.editReply({ components: [refreshRow] })
+                            .then(refreshedMessage => {
+                                // Create a new collector specifically for the refresh button
+                                const refreshCollector = refreshedMessage.createMessageComponentCollector({
+                                    componentType: ComponentType.Button,
+                                    filter: i => i.customId === 'refresh_menu',
+                                    time: 60 * 60 * 1000 // 1 hour timeout
+                                });
+
+                                refreshCollector.on('collect', async (buttonInteraction) => {
+                                    // When refresh button is clicked, display a message and execute the command again
+                                    // First, acknowledge the interaction
+                                    await buttonInteraction.deferUpdate();
+
+                                    // Display a loading message
+                                    await buttonInteraction.editReply({
+                                        content: "Refreshing menu...",
+                                        components: [],
+                                        embeds: []
+                                    });
+
+                                    try {
+                                        // Re-create the initial embed
+                                        const mainEmbed = new EmbedBuilder()
+                                            .setColor(Colors.Blue)
+                                            .setTitle(`${displayName} Menu - ${formattedDisplayDate}`)
+                                            .setDescription(`Please select a meal period`);
+
+                                        // Fetch menu data again to ensure it's fresh
+                                        const refreshedMenuData: MenuResponse = await fetchMenu({
+                                            mode: 'Daily',
+                                            locationId: diningHall.id,
+                                            date: formattedDate,
+                                            periodId: "" // Empty to get all periods
+                                        });
+
+                                        if (!refreshedMenuData.Menu || !Array.isArray(refreshedMenuData.Menu.MenuPeriods) || refreshedMenuData.Menu.MenuPeriods.length === 0) {
+                                            await buttonInteraction.editReply({
+                                                content: `No menu available for ${displayName} on ${formattedDate}.`,
+                                                components: [],
+                                                embeds: []
+                                            });
+                                            return;
+                                        }
+
+                                        // Get updated available periods (same logic as before)
+                                        const updatedPeriods = refreshedMenuData.Menu.MenuPeriods
+                                            .map((period: MenuPeriod) => {
+                                                // Reuse the same period parsing logic from before
+                                                // Parse the UTC time strings to extract hours and minutes
+                                                const parseTime = (timeStr: string | undefined): { timeString: string, isValid: boolean } => {
+                                                    // Handle undefined or empty time strings
+                                                    if (!timeStr) {
+                                                        return { timeString: "Time unavailable", isValid: false };
+                                                    }
+
+                                                    try {
+                                                        // Format is like "2025-04-22 13:00:00Z"
+                                                        const parts = timeStr.split(' ');
+                                                        if (parts.length < 2) {
+                                                            return { timeString: "Invalid format", isValid: false };
+                                                        }
+
+                                                        const timeParts = parts[1].split(':');
+                                                        if (timeParts.length < 2) {
+                                                            return { timeString: "Invalid time format", isValid: false };
+                                                        }
+
+                                                        let hours = parseInt(timeParts[0], 10);
+                                                        const minutes = parseInt(timeParts[1], 10);
+
+                                                        if (isNaN(hours) || isNaN(minutes)) {
+                                                            return { timeString: "Invalid time", isValid: false };
+                                                        }
+
+                                                        // Convert from UTC to Mountain Time (UTC-6)
+                                                        hours = (hours - 6 + 24) % 24;
+
+                                                        // Format the time string with AM/PM
+                                                        const period = hours >= 12 ? 'PM' : 'AM';
+                                                        hours = hours % 12;
+                                                        hours = hours === 0 ? 12 : hours; // Convert 0 to 12 for 12-hour format
+
+                                                        return {
+                                                            timeString: `${hours}:${minutes.toString().padStart(2, '0')} ${period}`,
+                                                            isValid: true
+                                                        };
+                                                    } catch (error) {
+                                                        console.error("Error parsing time:", timeStr, error);
+                                                        return { timeString: "Time processing error", isValid: false };
+                                                    }
+                                                };
+
+                                                const startTimeResult = parseTime(period.UtcMealPeriodStartTime);
+                                                const endTimeResult = parseTime(period.UtcMealPeriodEndTime);
+                                                const timeRange = `${startTimeResult.timeString} to ${endTimeResult.timeString}`;
+
+                                                // Only consider time valid if both start and end times are valid
+                                                const hasValidTime = startTimeResult.isValid && endTimeResult.isValid;
+
+                                                return {
+                                                    id: period.PeriodId,
+                                                    name: period.Name,
+                                                    timeRange,
+                                                    hasValidTime
+                                                };
+                                            });
+
+                                        // Create buttons for period selection
+                                        const updatedPeriodButtons = createPeriodButtons(updatedPeriods);
+
+                                        // Update the message with the refreshed periods
+                                        await buttonInteraction.editReply({
+                                            content: null,
+                                            embeds: [mainEmbed],
+                                            components: updatedPeriodButtons
+                                        });
+
+                                        // Create a new collector for the refreshed menu
+                                        const newCollector = refreshedMessage.createMessageComponentCollector({
+                                            componentType: ComponentType.Button,
+                                            time: 10 * 60 * 1000 // 10 minutes
+                                        });
+
+                                        // Reset state variables
+                                        let currentPeriodId: string | null = null;
+                                        let currentPeriodMenuData: MenuResponse | null = null;
+
+                                        // Handle button interactions the same way as the original collector
+                                        newCollector.on('collect', async (newButtonInteraction) => {
+                                            await newButtonInteraction.deferUpdate();
+
+                                            // Handle refresh button
+                                            if (newButtonInteraction.customId === 'refresh_menu') {
+                                                await newButtonInteraction.editReply({
+                                                    embeds: [mainEmbed],
+                                                    components: updatedPeriodButtons
+                                                });
+                                                return;
+                                            }
+
+                                            // Handle period selection
+                                            if (newButtonInteraction.customId.startsWith('period_')) {
+                                                const selectedPeriodId = newButtonInteraction.customId.replace('period_', '');
+                                                const selectedPeriod = updatedPeriods.find((p) => p.id === selectedPeriodId);
+
+                                                if (!selectedPeriod) {
+                                                    await newButtonInteraction.followUp({
+                                                        content: 'Selected period is no longer available.',
+                                                        ephemeral: true
+                                                    });
+                                                    return;
+                                                }
+
+                                                // Fetch menu data for the selected period
+                                                const periodMenuData = await fetchMenu({
+                                                    mode: 'Daily',
+                                                    locationId: diningHall.id,
+                                                    date: formattedDate,
+                                                    periodId: selectedPeriodId
+                                                });
+
+                                                // Store the current period data for later use
+                                                currentPeriodId = selectedPeriodId;
+                                                currentPeriodMenuData = periodMenuData;
+
+                                                if (!periodMenuData.Menu || !periodMenuData.Menu.MenuStations || !periodMenuData.Menu.MenuProducts) {
+                                                    await newButtonInteraction.followUp({
+                                                        content: `No menu available for ${displayName} ${selectedPeriod.name} on ${formattedDisplayDate}.`,
+                                                        ephemeral: true
+                                                    });
+                                                    return;
+                                                }
+
+                                                const stationMap = organizeMenuByStation(periodMenuData);
+                                                const stationNames = getStationNames(periodMenuData);
+
+                                                // Filter out empty stations
+                                                const nonEmptyStations = Array.from(stationNames.entries())
+                                                    .filter(([stationId]) => (stationMap.get(stationId) || []).length > 0);
+
+                                                if (nonEmptyStations.length === 0) {
+                                                    await newButtonInteraction.followUp({
+                                                        content: `No menu items available for ${displayName} ${selectedPeriod.name} on ${formattedDisplayDate}.`,
+                                                        ephemeral: true
+                                                    });
+                                                    return;
+                                                }
+
+                                                // Create description based on whether time is valid
+                                                let description = `Here are the menu options for **${selectedPeriod.name}** at **${displayName}**`;
+                                                if (selectedPeriod.hasValidTime) {
+                                                    description += ` from **${selectedPeriod.timeRange}**`;
+                                                }
+                                                description += `\n\nPlease select a station to view available items.`;
+
+                                                // Create station selection embed
+                                                const stationSelectionEmbed = new EmbedBuilder()
+                                                    .setColor(Colors.Blue)
+                                                    .setTitle(`${displayName} - ${formattedDisplayDate}`)
+                                                    .setDescription(description);
+
+                                                // Create buttons for station selection - using the selectedPeriodId
+                                                const stationButtons = createStationButtons(nonEmptyStations, selectedPeriodId);
+
+                                                await newButtonInteraction.editReply({
+                                                    embeds: [stationSelectionEmbed],
+                                                    components: stationButtons
+                                                });
+                                            }
+                                            // Handle station selection
+                                            else if (newButtonInteraction.customId.startsWith('station_')) {
+                                                // Extract just the station ID from the button ID
+                                                // Format is station_periodId_stationId
+                                                const parts = newButtonInteraction.customId.split('_');
+                                                if (parts.length < 3) {
+                                                    await newButtonInteraction.followUp({
+                                                        content: 'Invalid station selection format.',
+                                                        ephemeral: true
+                                                    });
+                                                    return;
+                                                }
+
+                                                const periodId = parts[1];
+                                                const stationId = parts[2];
+
+                                                const selectedPeriod = updatedPeriods.find((p) => p.id === periodId);
+                                                if (!selectedPeriod) {
+                                                    await newButtonInteraction.followUp({
+                                                        content: 'Selected period is no longer available.',
+                                                        ephemeral: true
+                                                    });
+                                                    return;
+                                                }
+
+                                                // Check if we already have the current period menu data
+                                                let periodMenuData = currentPeriodMenuData;
+                                                if (!periodMenuData || currentPeriodId !== periodId) {
+                                                    // If not, fetch it again
+                                                    periodMenuData = await fetchMenu({
+                                                        mode: 'Daily',
+                                                        locationId: diningHall.id,
+                                                        date: formattedDate,
+                                                        periodId: periodId
+                                                    });
+
+                                                    // Update the current state
+                                                    currentPeriodId = periodId;
+                                                    currentPeriodMenuData = periodMenuData;
+                                                }
+
+                                                if (!periodMenuData.Menu || !periodMenuData.Menu.MenuStations || !periodMenuData.Menu.MenuProducts) {
+                                                    await newButtonInteraction.followUp({
+                                                        content: `No menu available for ${displayName} ${selectedPeriod.name} on ${formattedDisplayDate}.`,
+                                                        ephemeral: true
+                                                    });
+                                                    return;
+                                                }
+
+                                                const stationMap = organizeMenuByStation(periodMenuData);
+                                                const stationNames = getStationNames(periodMenuData);
+                                                const stationName = stationNames.get(stationId) || 'Unknown Station';
+
+                                                // Get menu items for this station
+                                                const stationItems = stationMap.get(stationId) || [];
+
+                                                // Update the main embed with the station items
+                                                let stationContent = '';
+                                                if (stationItems.length > 0) {
+                                                    stationItems.forEach(item => {
+                                                        stationContent += `• ${item.MarketingName}\n`;
+                                                    });
+                                                } else {
+                                                    stationContent = 'No items available at this station.';
+                                                }
+
+                                                // Create description based on whether time is valid
+                                                let description = `Here are the menu options for **${selectedPeriod.name}** at **${displayName}**`;
+                                                if (selectedPeriod.hasValidTime) {
+                                                    description += ` from **${selectedPeriod.timeRange}**`;
+                                                }
+                                                description += `\n\n**${stationName}**\n${stationContent}`;
+
+                                                const stationMenuEmbed = new EmbedBuilder()
+                                                    .setColor(Colors.Blue)
+                                                    .setTitle(`${displayName} - ${formattedDisplayDate}`)
+                                                    .setDescription(description);
+
+                                                // Get all stations for this period
+                                                const nonEmptyStations = Array.from(stationNames.entries())
+                                                    .filter(([sId]) => (stationMap.get(sId) || []).length > 0);
+
+                                                // Recreate the station buttons with the current station highlighted
+                                                const stationButtons = createStationButtons(nonEmptyStations, periodId, stationId);
+
+                                                await newButtonInteraction.editReply({
+                                                    embeds: [stationMenuEmbed],
+                                                    components: stationButtons
+                                                });
+                                            }
+                                            // Handle back to period selection
+                                            else if (newButtonInteraction.customId === 'back_to_periods') {
+                                                await newButtonInteraction.editReply({
+                                                    embeds: [mainEmbed],
+                                                    components: updatedPeriodButtons
+                                                });
+                                            }
+                                        });
+
+                                        // Add another refresh button when the new collector times out
+                                        newCollector.on('end', () => {
+                                            try {
+                                                if (buttonInteraction.replied || buttonInteraction.deferred) {
+                                                    buttonInteraction.editReply({ components: [refreshRow] })
+                                                        .catch(error => console.error('Error adding refresh button after new collector end:', error));
+                                                }
+                                            } catch (error) {
+                                                console.error('Error in new collector end handler:', error);
+                                            }
+                                        });
+
+                                    } catch (error) {
+                                        console.error('Error handling refresh button:', error);
+                                        await buttonInteraction.editReply({
+                                            content: "An error occurred when refreshing the menu. Please use the /menu command again.",
+                                            components: [],
+                                            embeds: []
+                                        });
+                                    }
+                                });
+                            })
                             .catch((error) => {
                                 console.error('Could not add refresh button after collector end:', error);
                             });
