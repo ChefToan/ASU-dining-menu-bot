@@ -2,6 +2,10 @@ import { Client, Events, GatewayIntentBits, Collection } from 'discord.js';
 import { config } from 'dotenv';
 import * as menuCommand from './commands/menuCommands';
 import * as podrunCommand from './commands/podrunCommand';
+import * as workCommand from './commands/roulette/workCommand';
+import * as rouletteCommand from './commands/roulette/rouletteCommand';
+import * as balanceCommand from './commands/roulette/balanceCommand';
+import * as leaderboardCommand from './commands/roulette/leaderboardCommand';
 import { REST, Routes } from 'discord.js';
 import { setupCacheCleaner, stopCacheCleaner } from './utils/cacheManager';
 import { clearMenuCache } from './utils/api';
@@ -30,6 +34,10 @@ client.commands = new Collection();
 // Add commands to the collection
 client.commands.set(menuCommand.data.name, menuCommand);
 client.commands.set(podrunCommand.data.name, podrunCommand);
+client.commands.set(workCommand.data.name, workCommand);
+client.commands.set(rouletteCommand.data.name, rouletteCommand);
+client.commands.set(balanceCommand.data.name, balanceCommand);
+client.commands.set(leaderboardCommand.data.name, leaderboardCommand);
 
 // Store the cache cleaner interval for cleanup on shutdown
 let cacheCleaner: NodeJS.Timeout | null = null;
@@ -75,7 +83,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
 const registerCommands = async () => {
     const commands = [
         menuCommand.data.toJSON(),
-        podrunCommand.data.toJSON()
+        podrunCommand.data.toJSON(),
+        workCommand.data.toJSON(),
+        rouletteCommand.data.toJSON(),
+        balanceCommand.data.toJSON(),
+        leaderboardCommand.data.toJSON()
     ];
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN!);
 
