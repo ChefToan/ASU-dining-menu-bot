@@ -52,7 +52,7 @@ export const data = new SlashCommandBuilder()
 
 export async function execute(interaction: CommandInteraction) {
     try {
-        await interaction.deferReply({ ephemeral: true });
+        await interaction.deferReply();
 
         const userId = interaction.user.id;
         const username = interaction.user.username;
