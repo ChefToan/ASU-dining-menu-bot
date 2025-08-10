@@ -35,6 +35,9 @@ export class PodrunService {
         messageId?: string
     ): Promise<number | null> {
         try {
+            // First, clean up any expired podruns with the same key
+            await this.cleanupExpiredPodruns(podrunKey);
+
             const { data, error } = await db.getClient()
                 .from('podruns')
                 .insert({
@@ -231,6 +234,33 @@ export class PodrunService {
             return !error && data && data.length > 0;
         } catch (error) {
             console.error('Error checking if podrun exists:', error);
+            return false;
+        }
+    }
+
+    async cleanupExpiredPodruns(podrunKey?: string): Promise<boolean> {
+        try {
+            let query = db.getClient()
+                .from('podruns')
+                .update({ status: 'completed' })
+                .lt('run_time', new Date().toISOString())
+                .eq('status', 'active');
+
+            // If specific podrun key provided, only clean up that one
+            if (podrunKey) {
+                query = query.eq('podrun_key', podrunKey);
+            }
+
+            const { error } = await query;
+
+            if (error) {
+                console.error('Error cleaning up expired podruns:', error);
+                return false;
+            }
+
+            return true;
+        } catch (error) {
+            console.error('Error cleaning up expired podruns:', error);
             return false;
         }
     }

@@ -10,6 +10,7 @@ import { REST, Routes } from 'discord.js';
 import { setupCacheCleaner, stopCacheCleaner } from './utils/cacheManager';
 import { clearMenuCache } from './utils/api';
 import { db } from './services/database';
+import { podrunService } from './services/podrunService';
 
 // Load environment variables
 config();
@@ -55,6 +56,11 @@ client.once(Events.ClientReady, async (readyClient) => {
     } else {
         console.warn('⚠️ Database connection failed - some features may not work');
     }
+
+    // Clean up any expired podruns on startup
+    console.log('Cleaning up expired podruns...');
+    await podrunService.cleanupExpiredPodruns();
+    console.log('✅ Expired podruns cleaned up');
 
     // Start the cache cleaner
     cacheCleaner = setupCacheCleaner();
