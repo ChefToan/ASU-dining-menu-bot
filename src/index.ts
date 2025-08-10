@@ -1,6 +1,7 @@
 import { Client, Events, GatewayIntentBits, Collection } from 'discord.js';
 import { config } from 'dotenv';
 import * as menuCommand from './commands/menuCommands';
+import * as podrunCommand from './commands/podrunCommand';
 import { REST, Routes } from 'discord.js';
 import { setupCacheCleaner, stopCacheCleaner } from './utils/cacheManager';
 import { clearMenuCache } from './utils/api';
@@ -28,6 +29,7 @@ client.commands = new Collection();
 
 // Add commands to the collection
 client.commands.set(menuCommand.data.name, menuCommand);
+client.commands.set(podrunCommand.data.name, podrunCommand);
 
 // Store the cache cleaner interval for cleanup on shutdown
 let cacheCleaner: NodeJS.Timeout | null = null;
@@ -71,7 +73,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
 // Function to register slash commands with better error handling
 const registerCommands = async () => {
-    const commands = [menuCommand.data.toJSON()];
+    const commands = [
+        menuCommand.data.toJSON(),
+        podrunCommand.data.toJSON()
+    ];
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN!);
 
     try {
@@ -133,6 +138,11 @@ async function gracefulShutdown(signal: string) {
         // Stop the cache cleaner
         if (cacheCleaner) {
             stopCacheCleaner(cacheCleaner);
+        }
+
+        // Clean up any active podruns
+        if (podrunCommand.cleanup) {
+            podrunCommand.cleanup();
         }
 
         // Set a timeout to force exit after 3 seconds

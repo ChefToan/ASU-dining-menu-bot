@@ -33,7 +33,7 @@ export const data = new SlashCommandBuilder()
                 { name: 'Manzi', value: 'manzi' },
                 { name: 'Hassay', value: 'hassay' },
                 { name: 'Tooker', value: 'tooker' },
-                { name: 'MU', value: 'mu' }
+                { name: 'MU (Pitchforks)', value: 'mu' }
             )
     )
     .addStringOption(option =>
