@@ -38,10 +38,9 @@ export const data = new SlashCommandBuilder()
     )
     .addIntegerOption(option =>
         option.setName('bet_amount')
-            .setDescription('Amount of t$t to bet')
+            .setDescription('Amount of t$t to bet (minimum 10, or -1 for ALL-IN)')
             .setRequired(true)
-            .setMinValue(10)
-            .setMaxValue(10000)
+            .setMinValue(-1)
     )
     .addIntegerOption(option =>
         option.setName('number')
@@ -58,7 +57,7 @@ export async function execute(interaction: CommandInteraction) {
         const userId = interaction.user.id;
         const username = interaction.user.username;
         const betType = interaction.options.get('bet_type')?.value as BetType;
-        const betAmount = interaction.options.get('bet_amount')?.value as number;
+        let betAmount = interaction.options.get('bet_amount')?.value as number;
         const specificNumber = interaction.options.get('number')?.value as number | undefined;
 
         // Check if user has enough balance
@@ -72,6 +71,20 @@ export async function execute(interaction: CommandInteraction) {
                 .setTimestamp();
 
             await interaction.editReply({ embeds: [noMoneyEmbed] });
+            return;
+        }
+
+        // Handle all-in bet (-1 means bet everything)
+        if (betAmount === -1) {
+            betAmount = currentBalance;
+        } else if (betAmount < 10) {
+            const tooSmallEmbed = new EmbedBuilder()
+                .setColor(Colors.Red)
+                .setTitle('💰 Minimum Bet')
+                .setDescription('Minimum bet is t$t 10. Use -1 to bet everything!')
+                .setTimestamp();
+
+            await interaction.editReply({ embeds: [tooSmallEmbed] });
             return;
         }
 
@@ -90,6 +103,7 @@ export async function execute(interaction: CommandInteraction) {
             await interaction.editReply({ embeds: [insufficientFundsEmbed] });
             return;
         }
+
 
         // Validate number bet
         if (betType === BetType.Number && specificNumber === undefined) {
@@ -120,24 +134,32 @@ export async function execute(interaction: CommandInteraction) {
         const betValue = betType === BetType.Number ? specificNumber! : '';
         const betDisplay = rouletteGame.getBetTypeDisplay(betType, betValue);
 
+        // Check if this is an all-in bet
+        const isAllIn = betAmount === currentBalance;
+        
         const bettingEmbed = new EmbedBuilder()
-            .setColor(Colors.Blue)
-            .setTitle('🎰 Spinning the Roulette Wheel...')
-            .setDescription(`**<@${userId}>** has placed a bet!`)
+            .setColor(isAllIn ? Colors.Red : Colors.Blue)
+            .setTitle(isAllIn ? '🚨 ALL-IN BET! 🚨' : '🎰 Spinning the Roulette Wheel...')
+            .setDescription(`**<@${userId}>** has placed ${isAllIn ? 'an ALL-IN' : 'a'} bet!`)
             .addFields(
                 { name: 'Bet Type', value: betDisplay, inline: true },
                 { name: 'Bet Amount', value: userService.formatCurrency(betAmount), inline: true }
             )
             .setTimestamp();
 
-        // Create spin button
+        // Create spin and cancel buttons
         const row = new ActionRowBuilder<ButtonBuilder>()
             .addComponents(
                 new ButtonBuilder()
                     .setCustomId('spin_wheel')
                     .setLabel('Spin the Wheel!')
                     .setEmoji('🎰')
-                    .setStyle(ButtonStyle.Primary)
+                    .setStyle(ButtonStyle.Primary),
+                new ButtonBuilder()
+                    .setCustomId('cancel_bet')
+                    .setLabel('Cancel Bet')
+                    .setEmoji('❌')
+                    .setStyle(ButtonStyle.Secondary)
             );
 
         const message = await interaction.editReply({
@@ -229,6 +251,39 @@ export async function execute(interaction: CommandInteraction) {
 
                 await buttonInteraction.editReply({
                     embeds: [resultEmbed],
+                    components: [disabledRow]
+                });
+
+                collector.stop();
+            } else if (buttonInteraction.customId === 'cancel_bet') {
+                await buttonInteraction.deferUpdate();
+
+                // Refund the bet
+                await userService.addBalance(userId, betAmount, username);
+                const refundedBalance = await userService.getBalance(userId);
+
+                const cancelEmbed = new EmbedBuilder()
+                    .setColor(Colors.Yellow)
+                    .setTitle('❌ Bet Cancelled')
+                    .setDescription(`**<@${userId}>** cancelled their bet. Your money has been refunded.`)
+                    .addFields(
+                        { name: 'Refunded', value: userService.formatCurrency(betAmount), inline: true },
+                        { name: 'Balance', value: userService.formatCurrency(refundedBalance), inline: true }
+                    )
+                    .setTimestamp();
+
+                const disabledRow = new ActionRowBuilder<ButtonBuilder>()
+                    .addComponents(
+                        new ButtonBuilder()
+                            .setCustomId('cancel_bet')
+                            .setLabel('Bet Cancelled')
+                            .setEmoji('❌')
+                            .setStyle(ButtonStyle.Secondary)
+                            .setDisabled(true)
+                    );
+
+                await buttonInteraction.editReply({
+                    embeds: [cancelEmbed],
                     components: [disabledRow]
                 });
 
