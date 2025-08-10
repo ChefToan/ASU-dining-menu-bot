@@ -9,6 +9,7 @@ import * as leaderboardCommand from './commands/roulette/leaderboardCommand';
 import { REST, Routes } from 'discord.js';
 import { setupCacheCleaner, stopCacheCleaner } from './utils/cacheManager';
 import { clearMenuCache } from './utils/api';
+import { db } from './services/database';
 
 // Load environment variables
 config();
@@ -43,8 +44,17 @@ client.commands.set(leaderboardCommand.data.name, leaderboardCommand);
 let cacheCleaner: NodeJS.Timeout | null = null;
 
 // When the client is ready, run this code
-client.once(Events.ClientReady, (readyClient) => {
+client.once(Events.ClientReady, async (readyClient) => {
     console.log(`Ready! Logged in as ${readyClient.user.tag}`);
+
+    // Test database connection
+    console.log('Testing database connection...');
+    const isConnected = await db.testConnection();
+    if (isConnected) {
+        console.log('✅ Database connection successful');
+    } else {
+        console.warn('⚠️ Database connection failed - some features may not work');
+    }
 
     // Start the cache cleaner
     cacheCleaner = setupCacheCleaner();
@@ -114,7 +124,7 @@ const registerCommands = async () => {
 const startBot = async () => {
     try {
         // Clear the cache on startup to ensure fresh data
-        clearMenuCache();
+        await clearMenuCache();
         console.log('Menu cache cleared for fresh data.');
 
         // Try to register commands but continue even if it fails

@@ -4,7 +4,7 @@ import {
     EmbedBuilder,
     Colors
 } from 'discord.js';
-import balanceManager from '../../utils/balanceManager';
+import { userService } from '../../services/userService';
 
 export const data = new SlashCommandBuilder()
     .setName('work')
@@ -17,7 +17,7 @@ export async function execute(interaction: CommandInteraction) {
         const userId = interaction.user.id;
         const username = interaction.user.username;
 
-        const workResult = balanceManager.doWork(userId);
+        const workResult = await userService.doWork(userId, username);
 
         if (!workResult.success) {
             // User is on cooldown
@@ -29,7 +29,7 @@ export async function execute(interaction: CommandInteraction) {
                 .setColor(Colors.Red)
                 .setTitle('⏰ You\'re still on break!')
                 .setDescription(`You need to wait **${minutes}m ${seconds}s** before you can work again.`)
-                .setFooter({ text: `Current balance: ${balanceManager.formatCurrency(balanceManager.getBalance(userId))}` })
+                .setFooter({ text: `Current balance: ${userService.formatCurrency(await userService.getBalance(userId))}` })
                 .setTimestamp();
 
             await interaction.editReply({ embeds: [cooldownEmbed] });
@@ -38,7 +38,7 @@ export async function execute(interaction: CommandInteraction) {
 
         // Work successful
         const reward = workResult.reward!;
-        const newBalance = balanceManager.getBalance(userId);
+        const newBalance = await userService.getBalance(userId);
 
         // Array of random work activities
         const workActivities = [
@@ -61,8 +61,8 @@ export async function execute(interaction: CommandInteraction) {
             .setTitle('💰 Work Complete!')
             .setDescription(`${activity}`)
             .addFields(
-                { name: 'Earned', value: balanceManager.formatCurrency(reward), inline: true },
-                { name: 'New Balance', value: balanceManager.formatCurrency(newBalance), inline: true }
+                { name: 'Earned', value: userService.formatCurrency(reward), inline: true },
+                { name: 'New Balance', value: userService.formatCurrency(newBalance), inline: true }
             )
             .setFooter({ text: `You can work again in 30 minutes` })
             .setTimestamp();

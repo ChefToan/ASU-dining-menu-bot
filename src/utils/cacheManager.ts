@@ -1,4 +1,4 @@
-import cache from './cache';
+import { cacheService } from '../services/cacheService';
 import { CACHE_CONFIG } from '../config';
 
 /**
@@ -12,12 +12,15 @@ export function setupCacheCleaner(): NodeJS.Timeout | null {
 
     console.log(`Setting up cache cleaner with interval: ${CACHE_CONFIG.CLEAN_INTERVAL}ms (${(CACHE_CONFIG.CLEAN_INTERVAL / (1000 * 60 * 60)).toFixed(2)} hours)`);
 
-    const interval = setInterval(() => {
-        const sizeBefore = cache.size();
-        cache.cleanExpired();
-        const sizeAfter = cache.size();
-
-        console.log(`Cache cleaner ran: removed ${sizeBefore - sizeAfter} expired entries. Current size: ${sizeAfter}`);
+    const interval = setInterval(async () => {
+        try {
+            const removedCount = await cacheService.cleanExpired();
+            const stats = await cacheService.getStats();
+            
+            console.log(`Cache cleaner ran: removed ${removedCount} expired entries. Active: ${stats.activeEntries}, Total: ${stats.totalEntries}`);
+        } catch (error) {
+            console.error('Error running cache cleaner:', error);
+        }
     }, CACHE_CONFIG.CLEAN_INTERVAL);
 
     return interval;

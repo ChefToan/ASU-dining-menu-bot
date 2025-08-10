@@ -11,16 +11,8 @@ import {
     TextChannel,
     User
 } from 'discord.js';
+import { podrunService } from '../services/podrunService';
 
-// Store active podruns
-const activePodruns = new Map<string, {
-    creator: User;
-    podrunners: Map<string, User>;
-    haters: Map<string, User>;
-    timeout: NodeJS.Timeout;
-    startTime: Date;
-    runTime: Date;
-}>();
 
 export const data = new SlashCommandBuilder()
     .setName('podrun')
@@ -37,12 +29,12 @@ export async function execute(interaction: CommandInteraction) {
     try {
         const minutes = interaction.options.get('minutes')?.value as number;
         const creator = interaction.user;
-        const channelId = interaction.channelId;
-        const guildId = interaction.guildId;
+        const channelId = interaction.channelId!;
+        const guildId = interaction.guildId!;
 
         // Check if there's already an active podrun in this channel
         const existingPodrunKey = `${guildId}-${channelId}`;
-        if (activePodruns.has(existingPodrunKey)) {
+        if (await podrunService.podrunExists(existingPodrunKey)) {
             await interaction.reply({
                 content: 'There\'s already an active podrun in this channel! Wait for it to finish before starting a new one.',
                 ephemeral: true
@@ -50,15 +42,17 @@ export async function execute(interaction: CommandInteraction) {
             return;
         }
 
-        // Calculate the run time
+        // Calculate the run time using user's local timezone
         const startTime = new Date();
         const runTime = new Date(startTime.getTime() + minutes * 60000);
 
-        // Format the time for display (12:44am format)
+        // Get user's timezone offset (Discord doesn't provide this directly, so we'll use a smart default)
+        // We'll use the server's timezone but format it in a user-friendly way
         const timeString = runTime.toLocaleTimeString('en-US', {
             hour: 'numeric',
             minute: '2-digit',
-            hour12: true
+            hour12: true,
+            timeZone: 'America/Phoenix' // Arizona time (ASU is in Arizona)
         }).toLowerCase();
 
         // Create the embed message
@@ -108,12 +102,24 @@ export async function execute(interaction: CommandInteraction) {
 
         const message = await interaction.fetchReply();
 
-        // Initialize tracking
-        const podrunners = new Map<string, User>();
-        const haters = new Map<string, User>();
+        // Create podrun in database
+        const podrunId = await podrunService.createPodrun(
+            existingPodrunKey,
+            creator,
+            guildId,
+            channelId,
+            startTime,
+            runTime,
+            message.id as string
+        );
 
-        // Add creator to podrunners
-        podrunners.set(creator.id, creator);
+        if (!podrunId) {
+            await interaction.editReply({
+                content: 'Failed to create podrun. Please try again.',
+                components: []
+            });
+            return;
+        }
 
         // Create collector for button interactions
         const collector = message.createMessageComponentCollector({
@@ -126,18 +132,14 @@ export async function execute(interaction: CommandInteraction) {
             const user = buttonInteraction.user;
 
             if (buttonInteraction.customId === 'podrun_yes') {
-                // Remove from haters if they were there
-                haters.delete(userId);
-                // Add to podrunners
-                podrunners.set(userId, user);
+                await podrunService.addParticipant(podrunId, userId, user.username, 'podrunner');
             } else if (buttonInteraction.customId === 'podrun_no') {
-                // Remove from podrunners if they were there
-                podrunners.delete(userId);
-                // Add to haters
-                haters.set(userId, user);
+                await podrunService.addParticipant(podrunId, userId, user.username, 'hater');
             } else if (buttonInteraction.customId === 'podrun_cancel') {
                 // Only the creator can cancel
                 if (userId === creator.id) {
+                    await podrunService.cancelPodrun(existingPodrunKey);
+
                     await buttonInteraction.reply({
                         content: 'Podrun has been cancelled.',
                         ephemeral: true
@@ -146,35 +148,8 @@ export async function execute(interaction: CommandInteraction) {
                     // Stop the collector
                     collector.stop('cancelled');
 
-                    // Remove from active podruns
-                    activePodruns.delete(existingPodrunKey);
-
-                    // Disable buttons
-                    const disabledRow = new ActionRowBuilder<ButtonBuilder>()
-                        .addComponents(
-                            new ButtonBuilder()
-                                .setCustomId('podrun_yes')
-                                .setEmoji('👍')
-                                .setLabel('Attending')
-                                .setStyle(ButtonStyle.Primary)
-                                .setDisabled(true),
-                            new ButtonBuilder()
-                                .setCustomId('podrun_no')
-                                .setEmoji('👎')
-                                .setLabel('Erm, Naur')
-                                .setStyle(ButtonStyle.Secondary)
-                                .setDisabled(true),
-                            new ButtonBuilder()
-                                .setCustomId('podrun_cancel')
-                                .setLabel('Cancel Podrun')
-                                .setStyle(ButtonStyle.Danger)
-                                .setDisabled(true)
-                        );
-
-                    // Update the original message to disable buttons
-                    await message.edit({
-                        components: [disabledRow]
-                    });
+                    // Delete the original message
+                    await message.delete();
 
                     return;
                 } else {
@@ -186,13 +161,17 @@ export async function execute(interaction: CommandInteraction) {
                 }
             }
 
+            // Get updated podrun data
+            const podrunData = await podrunService.getPodrun(existingPodrunKey);
+            if (!podrunData) return;
+
             // Update the embed
-            const podrunnersText = podrunners.size > 0
-                ? Array.from(podrunners.values()).map(u => `<@${u.id}>`).join('\n')
+            const podrunnersText = podrunData.podrunners.size > 0
+                ? Array.from(podrunData.podrunners.values()).map(u => `<@${u.id}>`).join('\n')
                 : '\u200B';
 
-            const hatersText = haters.size > 0
-                ? Array.from(haters.values()).map(u => `<@${u.id}>`).join('\n')
+            const hatersText = podrunData.haters.size > 0
+                ? Array.from(podrunData.haters.values()).map(u => `<@${u.id}>`).join('\n')
                 : '\u200B';
 
             const updatedEmbed = EmbedBuilder.from(embed)
@@ -216,9 +195,14 @@ export async function execute(interaction: CommandInteraction) {
         });
 
         // Set timeout for when the podrun starts
-        const timeout = setTimeout(async () => {
-            // Remove from active podruns
-            activePodruns.delete(existingPodrunKey);
+        podrunService.setTimeout(existingPodrunKey, async () => {
+            // Get current podrun data to check if cancelled
+            const podrunData = await podrunService.getPodrun(existingPodrunKey);
+            
+            // If podrun doesn't exist or was cancelled, don't send messages
+            if (!podrunData || podrunData.status !== 'active') {
+                return;
+            }
 
             // Disable buttons
             const disabledRow = new ActionRowBuilder<ButtonBuilder>()
@@ -250,35 +234,25 @@ export async function execute(interaction: CommandInteraction) {
             // Check if anyone besides the creator joined
             const channel = interaction.channel as TextChannel;
 
-            if (podrunners.size === 1) {
+            if (podrunData.podrunners.size === 1) {
                 // Only the creator, send cancellation message
                 await channel.send(`Womp womp, nobody wanted to podrun with <@${creator.id}>. Podrun has been cancelled`);
             } else {
                 // Multiple people joined, send podrun time message
-                const runnersList = Array.from(podrunners.values()).map(u => `<@${u.id}>`).join(' ');
+                const runnersList = Array.from(podrunData.podrunners.values()).map(u => `<@${u.id}>`).join(' ');
                 await channel.send(`It's podrun time! ${runnersList}`);
             }
+
+            // Mark podrun as completed
+            await podrunService.completePodrun(existingPodrunKey);
 
             // Stop the collector
             collector.stop();
         }, minutes * 60000);
 
-        // Store the active podrun
-        activePodruns.set(existingPodrunKey, {
-            creator,
-            podrunners,
-            haters,
-            timeout,
-            startTime,
-            runTime
-        });
-
         // Handle collector end (in case it ends before the timeout)
         collector.on('end', () => {
-            // Clean up if needed
-            if (activePodruns.has(existingPodrunKey)) {
-                activePodruns.delete(existingPodrunKey);
-            }
+            // Cleanup is now handled by the podrunService
         });
 
     } catch (error) {
@@ -305,8 +279,5 @@ export async function execute(interaction: CommandInteraction) {
 // Clean up function for when the bot shuts down
 export function cleanup() {
     // Clear all active podrun timeouts
-    for (const [key, podrun] of activePodruns.entries()) {
-        clearTimeout(podrun.timeout);
-        activePodruns.delete(key);
-    }
+    podrunService.cleanup();
 }

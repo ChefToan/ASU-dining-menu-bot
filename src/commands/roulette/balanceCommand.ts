@@ -4,7 +4,7 @@ import {
     EmbedBuilder,
     Colors
 } from 'discord.js';
-import balanceManager from '../../utils/balanceManager';
+import { userService } from '../../services/userService';
 
 export const data = new SlashCommandBuilder()
     .setName('balance')
@@ -20,18 +20,18 @@ export async function execute(interaction: CommandInteraction) {
         const targetUser = interaction.options.get('user')?.user || interaction.user;
         const isOwnBalance = targetUser.id === interaction.user.id;
 
-        const balance = balanceManager.getBalance(targetUser.id);
+        const balance = await userService.getBalance(targetUser.id);
 
         // Get leaderboard position
-        const leaderboard = balanceManager.getLeaderboard(100);
+        const leaderboard = await userService.getLeaderboard(100);
         const position = leaderboard.findIndex((entry: any) => entry.userId === targetUser.id) + 1;
 
         const balanceEmbed = new EmbedBuilder()
             .setColor(Colors.Gold)
-            .setTitle(`💰 ${isOwnBalance ? 'Your' : `${targetUser.username}'s`} Balance`)
+            .setTitle(`💰 ${isOwnBalance ? 'Your' : `<@${targetUser.id}>'s`} Balance`)
             .setThumbnail(targetUser.displayAvatarURL())
             .addFields(
-                { name: 'Current Balance', value: balanceManager.formatCurrency(balance), inline: true }
+                { name: 'Current Balance', value: userService.formatCurrency(balance), inline: true }
             );
 
         if (position > 0 && position <= 10) {

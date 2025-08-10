@@ -4,7 +4,7 @@ import {
     EmbedBuilder,
     Colors
 } from 'discord.js';
-import balanceManager from '../../utils/balanceManager';
+import { userService } from '../../services/userService';
 
 export const data = new SlashCommandBuilder()
     .setName('leaderboard')
@@ -14,13 +14,13 @@ export async function execute(interaction: CommandInteraction) {
     try {
         await interaction.deferReply();
 
-        const leaderboard = balanceManager.getLeaderboard(10);
+        const leaderboard = await userService.getLeaderboard(10);
 
         if (leaderboard.length === 0) {
             const emptyEmbed = new EmbedBuilder()
                 .setColor(Colors.Orange)
                 .setTitle('📊 t$t Leaderboard')
-                .setDescription('No one has earned any t$t yet!\nBe the first by using `/work`!')
+                .setDescription('No one has any t$t right now!\n\n💸 *Looks like everyone went broke gambling...*\n\nUse `/work` to earn money and claim your spot!')
                 .setTimestamp();
 
             await interaction.editReply({ embeds: [emptyEmbed] });
@@ -38,20 +38,15 @@ export async function execute(interaction: CommandInteraction) {
             else if (i === 2) medal = '🥉';
             else medal = `**${i + 1}.**`;
 
-            // Try to get user info (may fail if user left server)
-            try {
-                const user = await interaction.client.users.fetch(entry.userId);
-                description += `${medal} ${user.username} - ${balanceManager.formatCurrency(entry.balance)}\n`;
-            } catch {
-                description += `${medal} Unknown User - ${balanceManager.formatCurrency(entry.balance)}\n`;
-            }
+            // Use Discord mention format
+            description += `${medal} <@${entry.userId}> - ${userService.formatCurrency(entry.balance)}\n`;
         }
 
         // Check requestor's position if not in top 10
         const userId = interaction.user.id;
-        const allUsers = balanceManager.getLeaderboard(1000);
+        const allUsers = await userService.getLeaderboard(1000);
         const userPosition = allUsers.findIndex((entry: any) => entry.userId === userId) + 1;
-        const userBalance = balanceManager.getBalance(userId);
+        const userBalance = await userService.getBalance(userId);
 
         const leaderboardEmbed = new EmbedBuilder()
             .setColor(Colors.Gold)
@@ -62,7 +57,7 @@ export async function execute(interaction: CommandInteraction) {
         if (userPosition > 10 && userPosition > 0) {
             leaderboardEmbed.addFields({
                 name: 'Your Position',
-                value: `#${userPosition} - ${balanceManager.formatCurrency(userBalance)}`,
+                value: `#${userPosition} - ${userService.formatCurrency(userBalance)}`,
                 inline: false
             });
         } else if (userPosition === 0 && userBalance === 0) {

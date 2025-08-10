@@ -1,19 +1,35 @@
 # ASU Dining Menu Bot 🍽️
 
-A Discord bot that provides easy access to Arizona State University's dining hall menus.
+A comprehensive Discord bot for Arizona State University that provides dining hall menus, podrun organization, roulette games, and user economy management. Now powered by Supabase for persistent data storage!
 
 ![ASU Dining]()
 
 ## Features ✨
 
+### Core Features
 - **Real-time Menu Access**: Fetch the latest menus from ASU dining halls
 - **Multiple Dining Halls**: Support for Barrett, Manzi (Manzanita), Hassay (Hassayampa), Tooker, and MU (Pitchforks)
 - **Date Selection**: View menus for today or any specific date
-- **Meal Period Navigation**: Easily browse breakfast, lunch, dinner, and other meal periods
 - **Station-based Organization**: View menu items organized by food stations
 - **Interactive Interface**: User-friendly button-based navigation
-- **Automatic Timezone Handling**: Converts UTC times to Mountain Time
-- **Efficient Caching**: Reduces API calls and improves response time
+
+### Social Features
+- **Podrun Organization**: Create and manage group dining events with countdown timers
+- **User Participation**: Join as podrunner or express disinterest (hater status)
+- **Real-time Updates**: Live participant tracking with embed updates
+
+### Economy & Games
+- **Virtual Currency (t$t)**: Earn and spend virtual currency through various activities
+- **Work System**: Regular income through work commands with cooldown mechanics
+- **Roulette Casino**: Full-featured roulette game with multiple bet types
+- **User Balances**: Persistent balance tracking with transaction history
+- **Leaderboards**: Track top earners and gambling statistics
+
+### Data & Performance
+- **Supabase Integration**: All data persisted in PostgreSQL database
+- **Intelligent Caching**: Reduces API calls and improves response times
+- **Fallback System**: Continues operation even when database is unavailable
+- **Comprehensive Logging**: Detailed error handling and performance monitoring
 
 ## Prerequisites 📋
 

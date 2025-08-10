@@ -9,7 +9,8 @@ import {
     ComponentType,
     ButtonInteraction
 } from 'discord.js';
-import balanceManager from '../../utils/balanceManager';
+import { userService } from '../../services/userService';
+import { rouletteService } from '../../services/rouletteService';
 import rouletteGame, { BetType } from '../../utils/rouletteGame';
 
 export const data = new SlashCommandBuilder()
@@ -61,7 +62,7 @@ export async function execute(interaction: CommandInteraction) {
         const specificNumber = interaction.options.get('number')?.value as number | undefined;
 
         // Check if user has enough balance
-        const currentBalance = balanceManager.getBalance(userId);
+        const currentBalance = await userService.getBalance(userId);
 
         if (currentBalance === 0) {
             const noMoneyEmbed = new EmbedBuilder()
@@ -80,8 +81,8 @@ export async function execute(interaction: CommandInteraction) {
                 .setTitle('💸 Insufficient Funds')
                 .setDescription(`You don't have enough t$t to place this bet!`)
                 .addFields(
-                    { name: 'Your Balance', value: balanceManager.formatCurrency(currentBalance), inline: true },
-                    { name: 'Bet Amount', value: balanceManager.formatCurrency(betAmount), inline: true }
+                    { name: 'Your Balance', value: userService.formatCurrency(currentBalance), inline: true },
+                    { name: 'Bet Amount', value: userService.formatCurrency(betAmount), inline: true }
                 )
                 .setFooter({ text: 'Use /work to earn more t$t' })
                 .setTimestamp();
@@ -103,7 +104,7 @@ export async function execute(interaction: CommandInteraction) {
         }
 
         // Deduct the bet amount
-        const deducted = balanceManager.removeBalance(userId, betAmount);
+        const deducted = await userService.removeBalance(userId, betAmount, username);
         if (!deducted) {
             const errorEmbed = new EmbedBuilder()
                 .setColor(Colors.Red)
@@ -122,10 +123,10 @@ export async function execute(interaction: CommandInteraction) {
         const bettingEmbed = new EmbedBuilder()
             .setColor(Colors.Blue)
             .setTitle('🎰 Spinning the Roulette Wheel...')
-            .setDescription(`**${username}** has placed a bet!`)
+            .setDescription(`**<@${userId}>** has placed a bet!`)
             .addFields(
                 { name: 'Bet Type', value: betDisplay, inline: true },
-                { name: 'Bet Amount', value: balanceManager.formatCurrency(betAmount), inline: true }
+                { name: 'Bet Amount', value: userService.formatCurrency(betAmount), inline: true }
             )
             .setTimestamp();
 
@@ -157,13 +158,32 @@ export async function execute(interaction: CommandInteraction) {
 
                 // Play the game
                 const result = rouletteGame.play(betType, betValue, betAmount);
+                
+                const balanceBefore = currentBalance - betAmount;
+                let balanceAfter = balanceBefore;
 
                 // Update balance if won
                 if (result.won) {
-                    balanceManager.addBalance(userId, result.winAmount);
+                    balanceAfter = await userService.addBalance(userId, result.winAmount, username);
+                } else {
+                    balanceAfter = await userService.getBalance(userId);
                 }
 
-                const newBalance = balanceManager.getBalance(userId);
+                // Record the game in database
+                await rouletteService.recordGame({
+                    userId,
+                    username,
+                    betType,
+                    betValue: betValue?.toString(),
+                    betAmount,
+                    resultNumber: result.number,
+                    resultColor: result.color,
+                    won: result.won,
+                    winAmount: result.winAmount,
+                    payoutRatio: result.payout,
+                    balanceBefore,
+                    balanceAfter
+                });
 
                 // Create result embed
                 const resultColor = result.won ? Colors.Green : Colors.Red;
@@ -175,22 +195,22 @@ export async function execute(interaction: CommandInteraction) {
                     .setDescription(`The ball landed on **${result.number}** ${rouletteGame.getColorEmoji(result.color)}`)
                     .addFields(
                         { name: 'Your Bet', value: `${betDisplay}`, inline: true },
-                        { name: 'Bet Amount', value: balanceManager.formatCurrency(betAmount), inline: true }
+                        { name: 'Bet Amount', value: userService.formatCurrency(betAmount), inline: true }
                     );
 
                 if (result.won) {
                     resultEmbed.addFields(
                         { name: 'Payout', value: `${result.payout}:1`, inline: true },
-                        { name: 'Won Amount', value: balanceManager.formatCurrency(result.winAmount), inline: true }
+                        { name: 'Won Amount', value: userService.formatCurrency(result.winAmount), inline: true }
                     );
                 } else {
                     resultEmbed.addFields(
-                        { name: 'Lost Amount', value: balanceManager.formatCurrency(betAmount), inline: true }
+                        { name: 'Lost Amount', value: userService.formatCurrency(betAmount), inline: true }
                     );
                 }
 
                 resultEmbed.addFields(
-                    { name: 'New Balance', value: balanceManager.formatCurrency(newBalance), inline: false }
+                    { name: 'New Balance', value: userService.formatCurrency(balanceAfter), inline: false }
                 );
 
                 resultEmbed.setFooter({ text: 'Play responsibly!' });
@@ -219,15 +239,16 @@ export async function execute(interaction: CommandInteraction) {
         collector.on('end', async (collected, reason) => {
             if (reason === 'time' && collected.size === 0) {
                 // Timeout - refund the bet
-                balanceManager.addBalance(userId, betAmount);
+                await userService.addBalance(userId, betAmount, username);
+                const refundedBalance = await userService.getBalance(userId);
 
                 const timeoutEmbed = new EmbedBuilder()
                     .setColor(Colors.Orange)
                     .setTitle('⏰ Bet Timeout')
                     .setDescription('You didn\'t spin the wheel in time. Your bet has been refunded.')
                     .addFields(
-                        { name: 'Refunded', value: balanceManager.formatCurrency(betAmount), inline: true },
-                        { name: 'Balance', value: balanceManager.formatCurrency(balanceManager.getBalance(userId)), inline: true }
+                        { name: 'Refunded', value: userService.formatCurrency(betAmount), inline: true },
+                        { name: 'Balance', value: userService.formatCurrency(refundedBalance), inline: true }
                     )
                     .setTimestamp();
 

@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { MenuApiParams, MenuResponse, MenuItem } from '../types/menu';
-import cache from './cache';
+import { cacheService } from '../services/cacheService';
 
 const API_URL = 'https://asu.campusdish.com/api/menu/GetMenus';
 
@@ -17,10 +17,13 @@ export async function fetchMenu(params: MenuApiParams): Promise<MenuResponse> {
         });
 
         // Generate a cache key from the query parameters
-        const cacheKey = cache.generateKey(queryParams);
+        const cacheKey = Object.keys(queryParams)
+            .sort()
+            .map(key => `${key}=${queryParams[key]}`)
+            .join('&');
 
         // Check if the data is in the cache
-        const cachedData = cache.get<MenuResponse>(cacheKey);
+        const cachedData = await cacheService.get<MenuResponse>(cacheKey);
         if (cachedData) {
             console.log(`Cache hit for ${cacheKey}`);
             return cachedData;
@@ -32,8 +35,8 @@ export async function fetchMenu(params: MenuApiParams): Promise<MenuResponse> {
 
         // Validate response before caching
         if (response.data && response.data.Menu) {
-            // Store in cache
-            cache.set(cacheKey, response.data);
+            // Store in cache (24 hour TTL)
+            await cacheService.set(cacheKey, response.data, 24 * 60 * 60 * 1000);
             return response.data;
         } else {
             console.warn("Invalid menu data format received from API:", response.data);
@@ -84,14 +87,16 @@ export function getStationNames(menuData: MenuResponse): Map<string, string> {
 }
 
 // Clear the cache (for testing or forced refreshes)
-export function clearMenuCache(): void {
-    cache.clear();
+export async function clearMenuCache(): Promise<void> {
+    await cacheService.clear();
     console.log('Menu cache cleared');
 }
 
 // Get cache stats (for debugging)
-export function getCacheStats(): { size: number } {
-    return {
-        size: cache.size()
-    };
+export async function getCacheStats(): Promise<{
+    totalEntries: number;
+    expiredEntries: number;
+    activeEntries: number;
+}> {
+    return await cacheService.getStats();
 }
