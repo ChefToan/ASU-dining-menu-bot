@@ -38,7 +38,7 @@ export const data = new SlashCommandBuilder()
 const TRANSFER_COOLDOWN = 30 * 1000; // 30 seconds between transfers
 const MIN_TRANSFER_AMOUNT = 10;
 const MAX_TRANSFER_AMOUNT = 50000; // Maximum per transaction
-const MAX_DAILY_TRANSFERS = 20; // Maximum transfers per day
+const MAX_DAILY_TRANSFERS = 10; // Maximum transfers per day
 const MAX_DAILY_AMOUNT = 200000; // Maximum amount per day
 const userCooldowns = new Map<string, number>();
 

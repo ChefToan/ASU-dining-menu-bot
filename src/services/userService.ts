@@ -8,6 +8,8 @@ export interface UserBalance {
     balance: number;
     lastWork: Date | null;
     bankruptcyBailoutUsed: boolean;
+    bankruptcyFromGambling: boolean;
+    bankruptcyBailoutCount: number;
     username?: string;
 }
 
@@ -37,6 +39,8 @@ export class UserService {
                     balance: existingUser.balance,
                     lastWork: existingUser.last_work ? new Date(existingUser.last_work) : null,
                     bankruptcyBailoutUsed: existingUser.bankruptcy_bailout_used || false,
+                    bankruptcyFromGambling: existingUser.bankruptcy_from_gambling || false,
+                    bankruptcyBailoutCount: existingUser.bankruptcy_bailout_count || 0,
                     username: existingUser.username || undefined
                 };
             }
@@ -59,6 +63,8 @@ export class UserService {
                 balance: newUser.balance,
                 lastWork: newUser.last_work ? new Date(newUser.last_work) : null,
                 bankruptcyBailoutUsed: newUser.bankruptcy_bailout_used || false,
+                bankruptcyFromGambling: newUser.bankruptcy_from_gambling || false,
+                bankruptcyBailoutCount: newUser.bankruptcy_bailout_count || 0,
                 username: newUser.username || undefined
             };
         } catch (error) {
@@ -69,6 +75,8 @@ export class UserService {
                 balance: this.STARTING_BALANCE,
                 lastWork: null,
                 bankruptcyBailoutUsed: false,
+                bankruptcyFromGambling: false,
+                bankruptcyBailoutCount: 0,
                 username
             };
         }
@@ -144,7 +152,9 @@ export class UserService {
             const user = await this.getOrCreateUser(userId);
 
             // Check if user is broke and eligible for bankruptcy bailout
-            if (user.balance === 0 && !user.bankruptcyBailoutUsed) {
+            // Only trigger for users who went broke from gambling specifically
+            // Limit to maximum 1 bailout per user to prevent exploitation
+            if (user.balance === 0 && user.bankruptcyBailoutCount === 0 && user.bankruptcyFromGambling) {
                 return { canWork: true, bankruptcyBailout: true };
             }
 
@@ -193,9 +203,10 @@ export class UserService {
                 username 
             };
 
-            // If this is a bankruptcy bailout, mark it as used
+            // If this is a bankruptcy bailout, increment count and clear gambling flag
             if (workCheck.bankruptcyBailout) {
-                updateData.bankruptcy_bailout_used = true;
+                updateData.bankruptcy_bailout_count = (user.bankruptcyBailoutCount || 0) + 1;
+                updateData.bankruptcy_from_gambling = false;
             }
 
             // Update user balance and last work time
@@ -260,12 +271,19 @@ export class UserService {
 
     async setBankruptcyBailout(userId: string): Promise<void> {
         try {
-            const { error } = await db.getClient()
-                .from('users')
-                .update({ bankruptcy_bailout_used: false })
-                .eq('user_id', userId);
+            const user = await this.getOrCreateUser(userId);
+            
+            // Only set gambling flag if user hasn't used their bailout yet
+            if (user.bankruptcyBailoutCount === 0) {
+                const { error } = await db.getClient()
+                    .from('users')
+                    .update({ 
+                        bankruptcy_from_gambling: true
+                    })
+                    .eq('user_id', userId);
 
-            if (error) throw error;
+                if (error) throw error;
+            }
         } catch (error) {
             console.error('Error setting bankruptcy bailout:', error);
         }

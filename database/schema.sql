@@ -8,6 +8,8 @@ CREATE TABLE users (
     balance INTEGER NOT NULL DEFAULT 0,
     last_work TIMESTAMPTZ,
     bankruptcy_bailout_used BOOLEAN DEFAULT FALSE, -- Whether user has used their one-time bailout work
+    bankruptcy_from_gambling BOOLEAN DEFAULT FALSE, -- True when user went broke specifically from gambling
+    bankruptcy_bailout_count INTEGER DEFAULT 0, -- Count of bailouts used to prevent exploitation
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );

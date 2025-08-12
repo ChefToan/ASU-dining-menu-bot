@@ -48,6 +48,8 @@ CREATE TABLE users (
     balance INTEGER NOT NULL DEFAULT 0,
     last_work TIMESTAMPTZ,
     bankruptcy_bailout_used BOOLEAN DEFAULT FALSE, -- Whether user has used their one-time bailout work
+    bankruptcy_from_gambling BOOLEAN DEFAULT FALSE, -- True when user went broke specifically from gambling
+    bankruptcy_bailout_count INTEGER DEFAULT 0, -- Count of bailouts used to prevent exploitation
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -183,28 +185,28 @@ $$ language 'plpgsql';
 
 -- Function to get top winners (for roulette leaderboard)
 CREATE OR REPLACE FUNCTION get_top_winners(winner_limit INTEGER DEFAULT 10)
-RETURNS TABLE (
-    userId VARCHAR(20),
+RETURNS TABLE(
+    user_id VARCHAR(20),
     username VARCHAR(32),
-    totalWinnings BIGINT,
-    gamesPlayed BIGINT,
-    winRate DECIMAL(5,2)
+    total_winnings BIGINT,
+    games_played BIGINT,
+    win_rate NUMERIC
 ) AS $$
 BEGIN
     RETURN QUERY
     SELECT 
         rg.user_id,
         rg.username,
-        SUM(rg.win_amount)::BIGINT as totalWinnings,
-        COUNT(*)::BIGINT as gamesPlayed,
-        ROUND((COUNT(CASE WHEN rg.won THEN 1 END)::DECIMAL / COUNT(*) * 100), 2) as winRate
+        SUM(rg.win_amount)::BIGINT as total_winnings,
+        COUNT(*)::BIGINT as games_played,
+        ROUND((COUNT(CASE WHEN rg.won THEN 1 END)::NUMERIC / COUNT(*)::NUMERIC) * 100, 2) as win_rate
     FROM roulette_games rg
     GROUP BY rg.user_id, rg.username
-    HAVING SUM(rg.win_amount) > 0
-    ORDER BY SUM(rg.win_amount) DESC
+    HAVING COUNT(*) >= 5  -- Minimum games to appear on leaderboard
+    ORDER BY total_winnings DESC
     LIMIT winner_limit;
 END;
-$$ LANGUAGE plpgsql;
+$$ language 'plpgsql';
 
 -- ================================
 -- CREATE TRIGGERS
@@ -229,6 +231,7 @@ SELECT
     username,
     balance,
     last_work,
+    bankruptcy_bailout_count,
     created_at,
     RANK() OVER (ORDER BY balance DESC) as rank
 FROM users 

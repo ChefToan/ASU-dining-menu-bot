@@ -44,7 +44,7 @@ export const data = new SlashCommandBuilder()
     )
     .addIntegerOption(option =>
         option.setName('number')
-            .setDescription('Specific number to bet on (0-36) - only if bet_type is "Specific Number"')
+            .setDescription('Specific number to bet on (0-36) - only required when bet_type is "Specific Number"')
             .setRequired(false)
             .setMinValue(0)
             .setMaxValue(36)
@@ -104,7 +104,6 @@ export async function execute(interaction: CommandInteraction) {
             await interaction.editReply({ embeds: [insufficientFundsEmbed] });
             return;
         }
-
 
         // Validate number bet
         if (betType === BetType.Number && specificNumber === undefined) {
@@ -284,15 +283,19 @@ export async function execute(interaction: CommandInteraction) {
                 );
 
                 // Check for bankruptcy bailout (all-in loss that results in 0 balance)
+                // Only show if user hasn't used their bailout yet
                 if (!result.won && isAllIn && balanceAfter === 0) {
-                    await userService.setBankruptcyBailout(userId);
-                    resultEmbed.addFields(
-                        { 
-                            name: '🆘 Bankruptcy Bailout Activated!', 
-                            value: 'You can use `/work` once without cooldown to get back on your feet!', 
-                            inline: false 
-                        }
-                    );
+                    const user = await userService.getOrCreateUser(userId);
+                    if (user.bankruptcyBailoutCount === 0) {
+                        await userService.setBankruptcyBailout(userId);
+                        resultEmbed.addFields(
+                            { 
+                                name: '🆘 Bankruptcy Bailout Activated!', 
+                                value: 'You can use `/work` once without cooldown to get back on your feet!', 
+                                inline: false 
+                            }
+                        );
+                    }
                 }
 
                 resultEmbed.setFooter({ text: 'Play responsibly!' });

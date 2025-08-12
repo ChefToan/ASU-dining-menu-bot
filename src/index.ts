@@ -7,6 +7,7 @@ import * as rouletteOddsCommand from './commands/roulette/rouletteOddsCommand';
 import * as balanceCommand from './commands/roulette/balanceCommand';
 import * as leaderboardCommand from './commands/roulette/leaderboardCommand';
 import * as payCommand from './commands/payCommand';
+import * as menuCommand from './commands/menuCommand';
 import { REST, Routes } from 'discord.js';
 import { db } from './services/database';
 import { podrunService } from './services/podrunService';
@@ -40,6 +41,7 @@ client.commands.set(rouletteOddsCommand.data.name, rouletteOddsCommand);
 client.commands.set(balanceCommand.data.name, balanceCommand);
 client.commands.set(leaderboardCommand.data.name, leaderboardCommand);
 client.commands.set(payCommand.data.name, payCommand);
+client.commands.set(menuCommand.data.name, menuCommand);
 
 
 // When the client is ready, run this code
@@ -100,7 +102,8 @@ const registerCommands = async () => {
         rouletteOddsCommand.data.toJSON(),
         balanceCommand.data.toJSON(),
         leaderboardCommand.data.toJSON(),
-        payCommand.data.toJSON()
+        payCommand.data.toJSON(),
+        menuCommand.data.toJSON()
     ];
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN!);
 
