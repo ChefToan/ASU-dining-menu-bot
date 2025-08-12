@@ -28,7 +28,7 @@ export async function execute(interaction: CommandInteraction) {
 
         const balanceEmbed = new EmbedBuilder()
             .setColor(Colors.Gold)
-            .setTitle(`💰 ${isOwnBalance ? 'Your' : `<@${targetUser.id}>'s`} Balance`)
+            .setTitle(`💰 ${isOwnBalance ? 'Your' : `${targetUser.displayName}'s`} Balance`)
             .setThumbnail(targetUser.displayAvatarURL())
             .addFields(
                 { name: 'Current Balance', value: userService.formatCurrency(balance), inline: true }

@@ -91,7 +91,7 @@ export async function execute(interaction: CommandInteraction) {
             },
             { 
                 name: 'ℹ️ Additional Info',
-                value: '• Minimum bet: t$t 10\n• Use -1 for ALL-IN bets\n• All users start with t$t 0\n• Use `/pay` to transfer money to other users\n• Use `/work` to earn t$t every 30 minutes',
+                value: '• Minimum bet: t$t 10\n• Use -1 for ALL-IN bets\n• All users start with t$t 0\n• Use `/pay` to transfer money to other users\n• Use `/work` to earn t$t every 30 minutes\n• **Bankruptcy Bailout:** If you have t$t 0, you get a one-time special work session',
                 inline: false 
             }
         );
