@@ -1,14 +1,13 @@
 import { Client, Events, GatewayIntentBits, Collection } from 'discord.js';
 import { config } from 'dotenv';
-import * as menuCommand from './commands/menuCommands';
 import * as podrunCommand from './commands/podrunCommand';
 import * as workCommand from './commands/roulette/workCommand';
 import * as rouletteCommand from './commands/roulette/rouletteCommand';
+import * as rouletteOddsCommand from './commands/roulette/rouletteOddsCommand';
 import * as balanceCommand from './commands/roulette/balanceCommand';
 import * as leaderboardCommand from './commands/roulette/leaderboardCommand';
+import * as payCommand from './commands/payCommand';
 import { REST, Routes } from 'discord.js';
-import { setupCacheCleaner, stopCacheCleaner } from './utils/cacheManager';
-import { clearMenuCache } from './utils/api';
 import { db } from './services/database';
 import { podrunService } from './services/podrunService';
 
@@ -34,15 +33,14 @@ declare module 'discord.js' {
 client.commands = new Collection();
 
 // Add commands to the collection
-client.commands.set(menuCommand.data.name, menuCommand);
 client.commands.set(podrunCommand.data.name, podrunCommand);
 client.commands.set(workCommand.data.name, workCommand);
 client.commands.set(rouletteCommand.data.name, rouletteCommand);
+client.commands.set(rouletteOddsCommand.data.name, rouletteOddsCommand);
 client.commands.set(balanceCommand.data.name, balanceCommand);
 client.commands.set(leaderboardCommand.data.name, leaderboardCommand);
+client.commands.set(payCommand.data.name, payCommand);
 
-// Store the cache cleaner interval for cleanup on shutdown
-let cacheCleaner: NodeJS.Timeout | null = null;
 
 // When the client is ready, run this code
 client.once(Events.ClientReady, async (readyClient) => {
@@ -62,8 +60,6 @@ client.once(Events.ClientReady, async (readyClient) => {
     await podrunService.cleanupExpiredPodruns();
     console.log('✅ Expired podruns cleaned up');
 
-    // Start the cache cleaner
-    cacheCleaner = setupCacheCleaner();
 });
 
 // Handle interaction create events with comprehensive error handling
@@ -98,12 +94,13 @@ client.on(Events.InteractionCreate, async (interaction) => {
 // Function to register slash commands with better error handling
 const registerCommands = async () => {
     const commands = [
-        menuCommand.data.toJSON(),
         podrunCommand.data.toJSON(),
         workCommand.data.toJSON(),
         rouletteCommand.data.toJSON(),
+        rouletteOddsCommand.data.toJSON(),
         balanceCommand.data.toJSON(),
-        leaderboardCommand.data.toJSON()
+        leaderboardCommand.data.toJSON(),
+        payCommand.data.toJSON()
     ];
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN!);
 
@@ -129,9 +126,6 @@ const registerCommands = async () => {
 // Start the bot with maximum error handling
 const startBot = async () => {
     try {
-        // Clear the cache on startup to ensure fresh data
-        await clearMenuCache();
-        console.log('Menu cache cleared for fresh data.');
 
         // Try to register commands but continue even if it fails
         await registerCommands().catch(error => {
@@ -163,10 +157,6 @@ async function gracefulShutdown(signal: string) {
     console.log(`${signal} received. Bot is shutting down...`);
 
     try {
-        // Stop the cache cleaner
-        if (cacheCleaner) {
-            stopCacheCleaner(cacheCleaner);
-        }
 
         // Clean up any active podruns
         if (podrunCommand.cleanup) {

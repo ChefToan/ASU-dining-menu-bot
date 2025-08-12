@@ -1,6 +1,5 @@
 import { db } from './database';
 import { fallbackService } from './fallbackService';
-import { User } from 'discord.js';
 
 let useDatabaseFallback = false;
 
@@ -8,6 +7,7 @@ export interface UserBalance {
     userId: string;
     balance: number;
     lastWork: Date | null;
+    bankruptcyBailoutUsed: boolean;
     username?: string;
 }
 
@@ -36,6 +36,7 @@ export class UserService {
                     userId: existingUser.user_id,
                     balance: existingUser.balance,
                     lastWork: existingUser.last_work ? new Date(existingUser.last_work) : null,
+                    bankruptcyBailoutUsed: existingUser.bankruptcy_bailout_used || false,
                     username: existingUser.username || undefined
                 };
             }
@@ -57,6 +58,7 @@ export class UserService {
                 userId: newUser.user_id,
                 balance: newUser.balance,
                 lastWork: newUser.last_work ? new Date(newUser.last_work) : null,
+                bankruptcyBailoutUsed: newUser.bankruptcy_bailout_used || false,
                 username: newUser.username || undefined
             };
         } catch (error) {
@@ -66,6 +68,7 @@ export class UserService {
                 userId,
                 balance: this.STARTING_BALANCE,
                 lastWork: null,
+                bankruptcyBailoutUsed: false,
                 username
             };
         }
@@ -136,9 +139,14 @@ export class UserService {
         }
     }
 
-    async canWork(userId: string): Promise<{ canWork: boolean; timeRemaining?: number }> {
+    async canWork(userId: string): Promise<{ canWork: boolean; timeRemaining?: number; bankruptcyBailout?: boolean }> {
         try {
             const user = await this.getOrCreateUser(userId);
+
+            // Check if user is broke and eligible for bankruptcy bailout
+            if (user.balance === 0 && !user.bankruptcyBailoutUsed) {
+                return { canWork: true, bankruptcyBailout: true };
+            }
 
             if (!user.lastWork) {
                 return { canWork: true };
@@ -178,14 +186,22 @@ export class UserService {
             const balanceBefore = user.balance;
             const balanceAfter = balanceBefore + reward;
 
+            // Prepare update object
+            const updateData: any = {
+                balance: balanceAfter, 
+                last_work: new Date().toISOString(),
+                username 
+            };
+
+            // If this is a bankruptcy bailout, mark it as used
+            if (workCheck.bankruptcyBailout) {
+                updateData.bankruptcy_bailout_used = true;
+            }
+
             // Update user balance and last work time
             const { error: updateError } = await db.getClient()
                 .from('users')
-                .update({ 
-                    balance: balanceAfter, 
-                    last_work: new Date().toISOString(),
-                    username 
-                })
+                .update(updateData)
                 .eq('user_id', userId);
 
             if (updateError) throw updateError;
@@ -238,6 +254,20 @@ export class UserService {
             console.error('Error getting leaderboard, using fallback:', error);
             useDatabaseFallback = true;
             return fallbackService.getLeaderboard(limit);
+        }
+    }
+
+
+    async setBankruptcyBailout(userId: string): Promise<void> {
+        try {
+            const { error } = await db.getClient()
+                .from('users')
+                .update({ bankruptcy_bailout_used: false })
+                .eq('user_id', userId);
+
+            if (error) throw error;
+        } catch (error) {
+            console.error('Error setting bankruptcy bailout:', error);
         }
     }
 

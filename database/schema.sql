@@ -7,6 +7,7 @@ CREATE TABLE users (
     username VARCHAR(32), -- Discord username for display
     balance INTEGER NOT NULL DEFAULT 0,
     last_work TIMESTAMPTZ,
+    bankruptcy_bailout_used BOOLEAN DEFAULT FALSE, -- Whether user has used their one-time bailout work
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -51,6 +52,9 @@ CREATE TABLE roulette_games (
     payout_ratio DECIMAL(4,1) DEFAULT 0,
     balance_before INTEGER NOT NULL,
     balance_after INTEGER NOT NULL,
+    pity_applied BOOLEAN DEFAULT FALSE, -- Whether pity system was applied
+    pity_bonus_percentage INTEGER DEFAULT 0, -- Bonus win chance percentage applied
+    losing_streak INTEGER DEFAULT 0, -- Number of consecutive losses before this game
     played_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -63,6 +67,23 @@ CREATE TABLE work_sessions (
     balance_before INTEGER NOT NULL,
     balance_after INTEGER NOT NULL,
     worked_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Transactions table to track money transfers between users
+CREATE TABLE transactions (
+    id SERIAL PRIMARY KEY,
+    sender_id VARCHAR(20) NOT NULL,
+    receiver_id VARCHAR(20) NOT NULL,
+    sender_username VARCHAR(32),
+    receiver_username VARCHAR(32),
+    amount INTEGER NOT NULL,
+    transaction_type VARCHAR(20) NOT NULL DEFAULT 'transfer', -- transfer, work, roulette_win, etc.
+    description TEXT,
+    sender_balance_before INTEGER NOT NULL,
+    sender_balance_after INTEGER NOT NULL,
+    receiver_balance_before INTEGER NOT NULL,
+    receiver_balance_after INTEGER NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- Cache table for menu data and other cached content
@@ -85,6 +106,10 @@ CREATE INDEX idx_roulette_games_user_id ON roulette_games(user_id);
 CREATE INDEX idx_roulette_games_played_at ON roulette_games(played_at);
 CREATE INDEX idx_work_sessions_user_id ON work_sessions(user_id);
 CREATE INDEX idx_work_sessions_worked_at ON work_sessions(worked_at);
+CREATE INDEX idx_transactions_sender_id ON transactions(sender_id);
+CREATE INDEX idx_transactions_receiver_id ON transactions(receiver_id);
+CREATE INDEX idx_transactions_created_at ON transactions(created_at);
+CREATE INDEX idx_transactions_type ON transactions(transaction_type);
 CREATE INDEX idx_cache_entries_cache_key ON cache_entries(cache_key);
 CREATE INDEX idx_cache_entries_expires_at ON cache_entries(expires_at);
 

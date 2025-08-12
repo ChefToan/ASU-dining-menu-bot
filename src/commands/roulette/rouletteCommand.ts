@@ -60,6 +60,7 @@ export async function execute(interaction: CommandInteraction) {
         let betAmount = interaction.options.get('bet_amount')?.value as number;
         const specificNumber = interaction.options.get('number')?.value as number | undefined;
 
+
         // Check if user has enough balance
         const currentBalance = await userService.getBalance(userId);
 
@@ -130,6 +131,10 @@ export async function execute(interaction: CommandInteraction) {
             return;
         }
 
+        // Get current losing streak and daily stats for display
+        const currentLosingStreak = await rouletteService.getCurrentLosingStreak(userId);
+        const dailyStats = await rouletteService.getDailyStats(userId);
+        
         // Create betting embed
         const betValue = betType === BetType.Number ? specificNumber! : '';
         const betDisplay = rouletteGame.getBetTypeDisplay(betType, betValue);
@@ -144,8 +149,28 @@ export async function execute(interaction: CommandInteraction) {
             .addFields(
                 { name: 'Bet Type', value: betDisplay, inline: true },
                 { name: 'Bet Amount', value: userService.formatCurrency(betAmount), inline: true }
-            )
-            .setTimestamp();
+            );
+
+        // Add losing streak if exists
+        if (currentLosingStreak > 0) {
+            bettingEmbed.addFields(
+                { name: '🎯 Current Losing Streak', value: `${currentLosingStreak} losses`, inline: true }
+            );
+        }
+
+        // Add daily stats
+        if (dailyStats.totalGames > 0) {
+            const dailyProfitColor = dailyStats.netProfit >= 0 ? '🟢' : '🔴';
+            bettingEmbed.addFields(
+                { 
+                    name: '📊 Today\'s Stats', 
+                    value: `Games: ${dailyStats.totalGames} | Win Rate: ${dailyStats.winRate.toFixed(1)}% | ${dailyProfitColor} ${userService.formatCurrency(dailyStats.netProfit)}`,
+                    inline: false 
+                }
+            );
+        }
+
+        bettingEmbed.setTimestamp();
 
         // Create spin and cancel buttons
         const row = new ActionRowBuilder<ButtonBuilder>()
@@ -178,8 +203,11 @@ export async function execute(interaction: CommandInteraction) {
             if (buttonInteraction.customId === 'spin_wheel') {
                 await buttonInteraction.deferUpdate();
 
-                // Play the game
-                const result = rouletteGame.play(betType, betValue, betAmount);
+                // Get current losing streak
+                const losingStreak = await rouletteService.getCurrentLosingStreak(userId);
+                
+                // Play the game with pity system
+                const result = rouletteGame.play(betType, betValue, betAmount, losingStreak);
                 
                 const balanceBefore = currentBalance - betAmount;
                 let balanceAfter = balanceBefore;
@@ -190,6 +218,7 @@ export async function execute(interaction: CommandInteraction) {
                 } else {
                     balanceAfter = await userService.getBalance(userId);
                 }
+
 
                 // Record the game in database
                 await rouletteService.recordGame({
@@ -204,12 +233,20 @@ export async function execute(interaction: CommandInteraction) {
                     winAmount: result.winAmount,
                     payoutRatio: result.payout,
                     balanceBefore,
-                    balanceAfter
+                    balanceAfter,
+                    pityApplied: result.pityApplied,
+                    pityBonusPercentage: result.pityBonusPercentage,
+                    losingStreak: result.losingStreak
                 });
 
                 // Create result embed
                 const resultColor = result.won ? Colors.Green : Colors.Red;
-                const resultTitle = result.won ? '🎉 You Won!' : '😢 You Lost!';
+                let resultTitle = result.won ? '🎉 You Won!' : '😢 You Lost!';
+                
+                // Add pity system indicator
+                if (result.pityApplied && result.won) {
+                    resultTitle = '🍀 Lucky Break! You Won!';
+                }
 
                 const resultEmbed = new EmbedBuilder()
                     .setColor(resultColor)
@@ -219,6 +256,17 @@ export async function execute(interaction: CommandInteraction) {
                         { name: 'Your Bet', value: `${betDisplay}`, inline: true },
                         { name: 'Bet Amount', value: userService.formatCurrency(betAmount), inline: true }
                     );
+
+                // Add pity system information
+                if (result.pityBonusPercentage > 0) {
+                    if (result.losingStreak >= 15) {
+                        resultEmbed.addFields({ name: '🍀 Pity System', value: '**Guaranteed Win!** You had a long losing streak.', inline: false });
+                    } else if (result.pityApplied) {
+                        resultEmbed.addFields({ name: '🍀 Pity System', value: `Lucky boost activated! (+${result.pityBonusPercentage}% chance)`, inline: false });
+                    } else if (result.losingStreak >= 5) {
+                        resultEmbed.addFields({ name: '🎯 Losing Streak', value: `${result.losingStreak} losses in a row. Better luck next time!`, inline: false });
+                    }
+                }
 
                 if (result.won) {
                     resultEmbed.addFields(
@@ -234,6 +282,18 @@ export async function execute(interaction: CommandInteraction) {
                 resultEmbed.addFields(
                     { name: 'New Balance', value: userService.formatCurrency(balanceAfter), inline: false }
                 );
+
+                // Check for bankruptcy bailout (all-in loss that results in 0 balance)
+                if (!result.won && isAllIn && balanceAfter === 0) {
+                    await userService.setBankruptcyBailout(userId);
+                    resultEmbed.addFields(
+                        { 
+                            name: '🆘 Bankruptcy Bailout Activated!', 
+                            value: 'You can use `/work` once without cooldown to get back on your feet!', 
+                            inline: false 
+                        }
+                    );
+                }
 
                 resultEmbed.setFooter({ text: 'Play responsibly!' });
                 resultEmbed.setTimestamp();

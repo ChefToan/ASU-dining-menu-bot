@@ -20,6 +20,9 @@ export interface RouletteResult {
     won: boolean;
     payout: number;
     winAmount: number;
+    pityApplied: boolean;
+    pityBonusPercentage: number;
+    losingStreak: number;
 }
 
 class RouletteGame {
@@ -41,6 +44,14 @@ class RouletteGame {
         [BetType.Column1]: 2,     // 2:1
         [BetType.Column2]: 2,     // 2:1
         [BetType.Column3]: 2      // 2:1
+    };
+
+    // Pity system thresholds
+    private readonly PITY_THRESHOLDS: Record<number, { bonusChance: number; minPayoutMultiplier: number }> = {
+        5: { bonusChance: 10, minPayoutMultiplier: 1.0 },
+        8: { bonusChance: 20, minPayoutMultiplier: 1.5 },
+        12: { bonusChance: 30, minPayoutMultiplier: 2.0 },
+        15: { bonusChance: 100, minPayoutMultiplier: 1.0 } // Guaranteed win
     };
 
     /**
@@ -118,20 +129,160 @@ class RouletteGame {
     }
 
     /**
-     * Play a round of roulette
+     * Calculate pity bonus based on losing streak
      */
-    play(betType: BetType, betValue: string | number, betAmount: number): RouletteResult {
-        const spinResult = this.spin();
-        const won = this.checkWin(betType, betValue, spinResult);
-        const payout = this.PAYOUTS[betType];
+    calculatePityBonus(losingStreak: number): { bonusChance: number; minPayoutMultiplier: number } {
+        const thresholds = Object.keys(this.PITY_THRESHOLDS)
+            .map(k => parseInt(k))
+            .sort((a, b) => b - a); // Sort descending
+        
+        for (const threshold of thresholds) {
+            if (losingStreak >= threshold) {
+                return this.PITY_THRESHOLDS[threshold];
+            }
+        }
+        
+        return { bonusChance: 0, minPayoutMultiplier: 1.0 };
+    }
+
+    /**
+     * Apply pity system to spin result
+     */
+    applyPitySystem(
+        betType: BetType, 
+        betValue: string | number, 
+        originalResult: { number: number; color: 'red' | 'black' | 'green' },
+        pityBonus: { bonusChance: number; minPayoutMultiplier: number }
+    ): { result: { number: number; color: 'red' | 'black' | 'green' }; forced: boolean } {
+        if (pityBonus.bonusChance === 0) {
+            return { result: originalResult, forced: false };
+        }
+
+        const originalWon = this.checkWin(betType, betValue, originalResult);
+        
+        // If already won and no payout boost needed, keep original
+        if (originalWon && pityBonus.minPayoutMultiplier <= 1.0) {
+            return { result: originalResult, forced: false };
+        }
+
+        // Check if pity should activate
+        const shouldActivatePity = Math.random() * 100 < pityBonus.bonusChance;
+        
+        if (!shouldActivatePity && originalWon) {
+            return { result: originalResult, forced: false };
+        }
+
+        if (shouldActivatePity || pityBonus.bonusChance >= 100) {
+            // Force a win by generating a favorable result
+            const favorableResult = this.generateFavorableResult(betType, betValue);
+            return { result: favorableResult, forced: true };
+        }
+
+        return { result: originalResult, forced: false };
+    }
+
+    /**
+     * Generate a favorable result for the given bet
+     */
+    generateFavorableResult(betType: BetType, betValue: string | number): { number: number; color: 'red' | 'black' | 'green' } {
+        let favorableNumbers: number[] = [];
+
+        switch (betType) {
+            case BetType.Number:
+                return this.getNumberDetails(parseInt(betValue.toString()));
+            case BetType.Red:
+                favorableNumbers = this.RED_NUMBERS;
+                break;
+            case BetType.Black:
+                favorableNumbers = this.BLACK_NUMBERS;
+                break;
+            case BetType.Odd:
+                favorableNumbers = Array.from({length: 36}, (_, i) => i + 1).filter(n => n % 2 === 1);
+                break;
+            case BetType.Even:
+                favorableNumbers = Array.from({length: 36}, (_, i) => i + 1).filter(n => n % 2 === 0);
+                break;
+            case BetType.Low:
+                favorableNumbers = Array.from({length: 18}, (_, i) => i + 1);
+                break;
+            case BetType.High:
+                favorableNumbers = Array.from({length: 18}, (_, i) => i + 19);
+                break;
+            case BetType.Dozen1:
+                favorableNumbers = Array.from({length: 12}, (_, i) => i + 1);
+                break;
+            case BetType.Dozen2:
+                favorableNumbers = Array.from({length: 12}, (_, i) => i + 13);
+                break;
+            case BetType.Dozen3:
+                favorableNumbers = Array.from({length: 12}, (_, i) => i + 25);
+                break;
+            case BetType.Column1:
+                favorableNumbers = Array.from({length: 12}, (_, i) => (i * 3) + 1);
+                break;
+            case BetType.Column2:
+                favorableNumbers = Array.from({length: 12}, (_, i) => (i * 3) + 2);
+                break;
+            case BetType.Column3:
+                favorableNumbers = Array.from({length: 12}, (_, i) => (i * 3) + 3);
+                break;
+        }
+
+        const randomIndex = Math.floor(Math.random() * favorableNumbers.length);
+        const number = favorableNumbers[randomIndex];
+        return this.getNumberDetails(number);
+    }
+
+    /**
+     * Get number details (color)
+     */
+    getNumberDetails(number: number): { number: number; color: 'red' | 'black' | 'green' } {
+        let color: 'red' | 'black' | 'green';
+        
+        if (number === 0) {
+            color = 'green';
+        } else if (this.RED_NUMBERS.includes(number)) {
+            color = 'red';
+        } else {
+            color = 'black';
+        }
+
+        return { number, color };
+    }
+
+    /**
+     * Play a round of roulette with pity system
+     */
+    play(betType: BetType, betValue: string | number, betAmount: number, losingStreak: number = 0): RouletteResult {
+        const originalSpinResult = this.spin();
+        const pityBonus = this.calculatePityBonus(losingStreak);
+        
+        const { result: finalResult, forced: pityForced } = this.applyPitySystem(
+            betType, 
+            betValue, 
+            originalSpinResult, 
+            pityBonus
+        );
+
+        const won = this.checkWin(betType, betValue, finalResult);
+        let payout = this.PAYOUTS[betType];
+        
+        // Apply payout multiplier if pity was applied and provides bonus
+        if (pityForced && pityBonus.minPayoutMultiplier > 1.0) {
+            payout = Math.floor(payout * pityBonus.minPayoutMultiplier);
+        }
+
         const winAmount = won ? betAmount * (payout + 1) : 0; // +1 to include original bet
 
         return {
-            number: spinResult.number,
-            color: spinResult.color as 'red' | 'black' | 'green',
+            number: finalResult.number,
+            color: finalResult.color,
             won,
             payout,
-            winAmount
+            winAmount,
+            pityApplied: pityForced || (pityBonus.bonusChance > 0 && won),
+            pityBonusPercentage: pityBonus.bonusChance,
+            losingStreak
         };
     }
 

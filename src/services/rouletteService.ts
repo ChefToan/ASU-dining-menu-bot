@@ -15,6 +15,9 @@ export interface RouletteGameResult {
     payoutRatio: number;
     balanceBefore: number;
     balanceAfter: number;
+    pityApplied?: boolean;
+    pityBonusPercentage?: number;
+    losingStreak?: number;
     playedAt: Date;
 }
 
@@ -45,7 +48,10 @@ export class RouletteService {
                     win_amount: gameResult.winAmount,
                     payout_ratio: gameResult.payoutRatio,
                     balance_before: gameResult.balanceBefore,
-                    balance_after: gameResult.balanceAfter
+                    balance_after: gameResult.balanceAfter,
+                    pity_applied: gameResult.pityApplied || false,
+                    pity_bonus_percentage: gameResult.pityBonusPercentage || 0,
+                    losing_streak: gameResult.losingStreak || 0
                 })
                 .select('id')
                 .single();
@@ -273,6 +279,75 @@ export class RouletteService {
         } catch (error) {
             console.error('Error getting bet type stats:', error);
             return [];
+        }
+    }
+
+    async getCurrentLosingStreak(userId: string): Promise<number> {
+        try {
+            const { data, error } = await db.getClient()
+                .from('roulette_games')
+                .select('won')
+                .eq('user_id', userId)
+                .order('played_at', { ascending: false })
+                .limit(50); // Check last 50 games for streak
+
+            if (error || !data || data.length === 0) {
+                return 0;
+            }
+
+            let streak = 0;
+            for (const game of data) {
+                if (game.won) {
+                    break; // Streak broken
+                }
+                streak++;
+            }
+
+            return streak;
+        } catch (error) {
+            console.error('Error getting losing streak:', error);
+            return 0;
+        }
+    }
+
+    async getDailyStats(userId: string): Promise<GameStats> {
+        try {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const tomorrow = new Date(today);
+            tomorrow.setDate(tomorrow.getDate() + 1);
+
+            const { data, error } = await db.getClient()
+                .from('roulette_games')
+                .select('*')
+                .eq('user_id', userId)
+                .gte('played_at', today.toISOString())
+                .lt('played_at', tomorrow.toISOString());
+
+            if (error || !data) {
+                return this.getEmptyStats();
+            }
+
+            const totalGames = data.length;
+            const totalWon = data.filter(game => game.won).length;
+            const totalLost = totalGames - totalWon;
+            const totalAmountBet = data.reduce((sum, game) => sum + game.bet_amount, 0);
+            const totalAmountWon = data.reduce((sum, game) => sum + game.win_amount, 0);
+            const winRate = totalGames > 0 ? (totalWon / totalGames) * 100 : 0;
+            const netProfit = totalAmountWon - totalAmountBet;
+
+            return {
+                totalGames,
+                totalWon,
+                totalLost,
+                totalAmountBet,
+                totalAmountWon,
+                winRate,
+                netProfit
+            };
+        } catch (error) {
+            console.error('Error getting daily stats:', error);
+            return this.getEmptyStats();
         }
     }
 

@@ -17,6 +17,8 @@ export async function execute(interaction: CommandInteraction) {
         const userId = interaction.user.id;
         const username = interaction.user.username;
 
+        // Check if user is eligible for bankruptcy bailout
+        const workCheck = await userService.canWork(userId);
         const workResult = await userService.doWork(userId, username);
 
         if (!workResult.success) {
@@ -58,14 +60,27 @@ export async function execute(interaction: CommandInteraction) {
 
         const successEmbed = new EmbedBuilder()
             .setColor(Colors.Green)
-            .setTitle('💰 Work Complete!')
+            .setTitle(workCheck.bankruptcyBailout ? '🆘 Emergency Work!' : '💰 Work Complete!')
             .setDescription(`${activity}`)
             .addFields(
                 { name: 'Earned', value: userService.formatCurrency(reward), inline: true },
                 { name: 'New Balance', value: userService.formatCurrency(newBalance), inline: true }
-            )
-            .setFooter({ text: `You can work again in 30 minutes` })
-            .setTimestamp();
+            );
+
+        if (workCheck.bankruptcyBailout) {
+            successEmbed.addFields(
+                { 
+                    name: '🆘 Bankruptcy Bailout Used', 
+                    value: 'You used your one-time bailout! Next work will have normal 30-minute cooldown.', 
+                    inline: false 
+                }
+            );
+            successEmbed.setFooter({ text: 'Back on your feet! Normal cooldown applies to future work.' });
+        } else {
+            successEmbed.setFooter({ text: 'You can work again in 30 minutes' });
+        }
+        
+        successEmbed.setTimestamp();
 
         await interaction.editReply({ embeds: [successEmbed] });
 

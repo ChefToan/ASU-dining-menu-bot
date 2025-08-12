@@ -1,5 +1,5 @@
 -- This script will drop ALL tables, functions, views, triggers, and sequences
--- Then recreate everything from scratch
+-- Then recreate everything from scratch using the latest schema
 
 -- ================================
 -- DROP ALL EXISTING OBJECTS
@@ -23,6 +23,7 @@ DROP TABLE IF EXISTS podrun_participants CASCADE;
 DROP TABLE IF EXISTS podruns CASCADE;
 DROP TABLE IF EXISTS roulette_games CASCADE;
 DROP TABLE IF EXISTS work_sessions CASCADE;
+DROP TABLE IF EXISTS transactions CASCADE;
 DROP TABLE IF EXISTS cache_entries CASCADE;
 DROP TABLE IF EXISTS users CASCADE;
 
@@ -32,6 +33,7 @@ DROP SEQUENCE IF EXISTS podruns_id_seq CASCADE;
 DROP SEQUENCE IF EXISTS podrun_participants_id_seq CASCADE;
 DROP SEQUENCE IF EXISTS roulette_games_id_seq CASCADE;
 DROP SEQUENCE IF EXISTS work_sessions_id_seq CASCADE;
+DROP SEQUENCE IF EXISTS transactions_id_seq CASCADE;
 DROP SEQUENCE IF EXISTS cache_entries_id_seq CASCADE;
 
 -- ================================
@@ -45,6 +47,7 @@ CREATE TABLE users (
     username VARCHAR(32), -- Discord username for display
     balance INTEGER NOT NULL DEFAULT 0,
     last_work TIMESTAMPTZ,
+    bankruptcy_bailout_used BOOLEAN DEFAULT FALSE, -- Whether user has used their one-time bailout work
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -89,6 +92,9 @@ CREATE TABLE roulette_games (
     payout_ratio DECIMAL(4,1) DEFAULT 0,
     balance_before INTEGER NOT NULL,
     balance_after INTEGER NOT NULL,
+    pity_applied BOOLEAN DEFAULT FALSE, -- Whether pity system was applied
+    pity_bonus_percentage INTEGER DEFAULT 0, -- Bonus win chance percentage applied
+    losing_streak INTEGER DEFAULT 0, -- Number of consecutive losses before this game
     played_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -101,6 +107,23 @@ CREATE TABLE work_sessions (
     balance_before INTEGER NOT NULL,
     balance_after INTEGER NOT NULL,
     worked_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Transactions table to track money transfers between users
+CREATE TABLE transactions (
+    id SERIAL PRIMARY KEY,
+    sender_id VARCHAR(20) NOT NULL,
+    receiver_id VARCHAR(20) NOT NULL,
+    sender_username VARCHAR(32),
+    receiver_username VARCHAR(32),
+    amount INTEGER NOT NULL,
+    transaction_type VARCHAR(20) NOT NULL DEFAULT 'transfer', -- transfer, work, roulette_win, etc.
+    description TEXT,
+    sender_balance_before INTEGER NOT NULL,
+    sender_balance_after INTEGER NOT NULL,
+    receiver_balance_before INTEGER NOT NULL,
+    receiver_balance_after INTEGER NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- Cache table for menu data and other cached content
@@ -126,6 +149,10 @@ CREATE INDEX idx_roulette_games_user_id ON roulette_games(user_id);
 CREATE INDEX idx_roulette_games_played_at ON roulette_games(played_at);
 CREATE INDEX idx_work_sessions_user_id ON work_sessions(user_id);
 CREATE INDEX idx_work_sessions_worked_at ON work_sessions(worked_at);
+CREATE INDEX idx_transactions_sender_id ON transactions(sender_id);
+CREATE INDEX idx_transactions_receiver_id ON transactions(receiver_id);
+CREATE INDEX idx_transactions_created_at ON transactions(created_at);
+CREATE INDEX idx_transactions_type ON transactions(transaction_type);
 CREATE INDEX idx_cache_entries_cache_key ON cache_entries(cache_key);
 CREATE INDEX idx_cache_entries_expires_at ON cache_entries(expires_at);
 
@@ -231,12 +258,13 @@ GROUP BY p.id, p.podrun_key, p.creator_id, p.guild_id, p.channel_id, p.message_i
 ORDER BY p.created_at DESC;
 
 -- ================================
--- VERIFICATION QUERY
+-- VERIFICATION QUERIES
 -- ================================
 
 -- Verify all tables are empty and sequences are reset
-SELECT 'Database Reset Complete' as status;
+SELECT 'Database Reset Complete - All tables recreated with latest schema' as status;
 
+-- Show table row counts and sequence values
 SELECT 
     'users' as table_name, 
     COUNT(*) as row_count,
@@ -268,6 +296,12 @@ SELECT
 FROM work_sessions
 UNION ALL
 SELECT 
+    'transactions', 
+    COUNT(*),
+    (SELECT last_value FROM transactions_id_seq)
+FROM transactions
+UNION ALL
+SELECT 
     'cache_entries', 
     COUNT(*),
     (SELECT last_value FROM cache_entries_id_seq)
@@ -279,7 +313,7 @@ SELECT
     tablename,
     'TABLE' as object_type
 FROM pg_tables 
-WHERE schemaname = 'public' AND tablename IN ('users', 'podruns', 'podrun_participants', 'roulette_games', 'work_sessions', 'cache_entries')
+WHERE schemaname = 'public' AND tablename IN ('users', 'podruns', 'podrun_participants', 'roulette_games', 'work_sessions', 'transactions', 'cache_entries')
 UNION ALL
 SELECT 
     schemaname,
@@ -296,3 +330,15 @@ FROM pg_proc p
 LEFT JOIN pg_namespace n ON p.pronamespace = n.oid
 WHERE n.nspname = 'public' AND p.proname IN ('update_updated_at_column', 'clean_expired_cache', 'get_top_winners')
 ORDER BY object_type, tablename;
+
+-- Show column information for verification
+SELECT 
+    table_name,
+    column_name,
+    data_type,
+    is_nullable,
+    column_default
+FROM information_schema.columns 
+WHERE table_schema = 'public' 
+    AND table_name IN ('users', 'podruns', 'podrun_participants', 'roulette_games', 'work_sessions', 'transactions', 'cache_entries')
+ORDER BY table_name, ordinal_position;
