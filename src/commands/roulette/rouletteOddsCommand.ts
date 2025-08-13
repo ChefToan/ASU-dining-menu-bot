@@ -70,14 +70,14 @@ export async function execute(interaction: CommandInteraction) {
 
         // Add pity system information if user has losing streak
         if (losingStreak > 0 && consolationPrize > 0) {
-            let pityInfo = `🎁 **Consolation Prize:** Your next bet (≤t$t200) will include a +t$t${consolationPrize} bonus regardless of outcome!\n\n*${losingStreak} losing streak*`;
+            let pityInfo = `🎁 **Consolation Prize:** Your next smaller bet (≤t$t200) will include a +t$t${consolationPrize} bonus regardless of outcome!\n\n*${losingStreak} losing streak*`;
             oddsEmbed.addFields({ name: 'Your Current Status', value: pityInfo, inline: false });
         }
 
         oddsEmbed.addFields(
             { 
-                name: '🎁 Exploit-Proof Consolation System', 
-                value: '**Simple & Fair (Bets ≤t$t200 only):**\n• 5 losses: +t$t25 bonus\n• 10 losses: +t$t50 bonus\n• 15 losses: +t$t75 bonus\n• 25 losses: +t$t100 bonus\n\n**No guaranteed wins, no forced results - just small comfort bonuses for bad luck!**\n**Large bets (>t$t200) get no pity benefits to prevent exploitation.**', 
+                name: '🎁 Fair Consolation System', 
+                value: '**Comfort Bonuses for Bad Luck (Small Bets ≤t$t200):**\n• 5 losses: +t$t25 bonus\n• 10 losses: +t$t50 bonus\n• 15 losses: +t$t75 bonus\n• 25 losses: +t$t100 bonus\n\n**No guaranteed wins or forced results - just small comfort bonuses!**\n*Bonuses scale with bet size and balance to keep things fair for everyone.*', 
                 inline: false 
             },
             { 

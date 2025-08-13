@@ -272,7 +272,7 @@ export async function execute(interaction: CommandInteraction) {
                             pityMessage += `🎁 **Consolation Prize:** +t$t${consolationAmount} added to your winnings!\n`;
                         }
                     } else if (betAmount > 200 && result.losingStreak >= 5) {
-                        pityMessage += `🚫 **Large Bet:** No consolation prize for bets >t$t200 (prevents exploitation)\n`;
+                        pityMessage += `💰 **Large Bet:** Consolation prizes only apply to smaller bets (≤t$t200)\n`;
                     }
                     
                     if (result.losingStreak >= 5) {

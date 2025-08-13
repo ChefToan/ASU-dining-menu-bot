@@ -172,7 +172,7 @@ export async function execute(interaction: CommandInteraction) {
                 const feeEmbed = new EmbedBuilder()
                     .setColor(Colors.Red)
                     .setTitle('💰 Bankruptcy Bailout Fee')
-                    .setDescription('Accounts that used bankruptcy bailout have a 10% transfer fee to prevent exploitation.')
+                    .setDescription('Accounts that used bankruptcy bailout have a 10% transfer fee for system balance.')
                     .addFields(
                         { name: 'Transfer Amount', value: userService.formatCurrency(amount), inline: true },
                         { name: 'Transfer Fee (10%)', value: userService.formatCurrency(transferFee), inline: true },
@@ -180,7 +180,7 @@ export async function execute(interaction: CommandInteraction) {
                         { name: 'Your Balance', value: userService.formatCurrency(senderBalance), inline: true },
                         { name: 'Shortfall', value: userService.formatCurrency(totalCost - senderBalance), inline: true }
                     )
-                    .setFooter({ text: 'This prevents multi-account bailout farming' })
+                    .setFooter({ text: 'Transfer fees help maintain system balance' })
                     .setTimestamp();
 
                 await interaction.editReply({ embeds: [feeEmbed] });
@@ -224,7 +224,7 @@ export async function execute(interaction: CommandInteraction) {
         );
 
         if (hasBailoutFee) {
-            confirmEmbed.setFooter({ text: 'Bankruptcy bailout accounts have transfer fees to prevent exploitation' });
+            confirmEmbed.setFooter({ text: 'Transfer fees apply to maintain system balance' });
         } else {
             confirmEmbed.setFooter({ text: 'This action cannot be undone' });
         }
