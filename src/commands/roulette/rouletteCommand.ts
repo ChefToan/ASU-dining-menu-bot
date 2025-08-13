@@ -258,10 +258,19 @@ export async function execute(interaction: CommandInteraction) {
 
                 // Add pity system information
                 if (result.pityBonusPercentage > 0) {
-                    if (result.losingStreak >= 15) {
-                        resultEmbed.addFields({ name: '🍀 Pity System', value: '**Guaranteed Win!** You had a long losing streak.', inline: false });
+                    if (result.losingStreak >= 20) {
+                        resultEmbed.addFields({ name: '🍀 Pity System', value: '**Guaranteed Win!** You had a very long losing streak.', inline: false });
                     } else if (result.pityApplied) {
-                        resultEmbed.addFields({ name: '🍀 Pity System', value: `Lucky boost activated! (+${result.pityBonusPercentage}% chance)`, inline: false });
+                        let pityMessage = `Lucky boost activated! (+${result.pityBonusPercentage}% chance)`;
+                        // Check if they got a flat bonus (estimate based on bet amount and streak)
+                        if (result.losingStreak >= 15 && betAmount <= 500) {
+                            pityMessage += '\n**Bonus:** +t$t200 added to winnings!';
+                        } else if (result.losingStreak >= 10 && betAmount <= 200) {
+                            pityMessage += '\n**Bonus:** +t$t100 added to winnings!';
+                        } else if (result.losingStreak >= 5 && betAmount <= 100) {
+                            pityMessage += '\n**Bonus:** +t$t50 added to winnings!';
+                        }
+                        resultEmbed.addFields({ name: '🍀 Pity System', value: pityMessage, inline: false });
                     } else if (result.losingStreak >= 5) {
                         resultEmbed.addFields({ name: '🎯 Losing Streak', value: `${result.losingStreak} losses in a row. Better luck next time!`, inline: false });
                     }

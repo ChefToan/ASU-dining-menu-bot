@@ -47,11 +47,11 @@ class RouletteGame {
     };
 
     // Pity system thresholds
-    private readonly PITY_THRESHOLDS: Record<number, { bonusChance: number; minPayoutMultiplier: number }> = {
-        5: { bonusChance: 10, minPayoutMultiplier: 1.0 },
-        8: { bonusChance: 20, minPayoutMultiplier: 1.5 },
-        12: { bonusChance: 30, minPayoutMultiplier: 2.0 },
-        15: { bonusChance: 100, minPayoutMultiplier: 1.0 } // Guaranteed win
+    private readonly PITY_THRESHOLDS: Record<number, { bonusChance: number; flatBonus: number; maxBetForBonus: number }> = {
+        5: { bonusChance: 15, flatBonus: 50, maxBetForBonus: 100 },
+        10: { bonusChance: 25, flatBonus: 100, maxBetForBonus: 200 },
+        15: { bonusChance: 40, flatBonus: 200, maxBetForBonus: 500 },
+        20: { bonusChance: 100, flatBonus: 0, maxBetForBonus: 1000 } // Guaranteed win, no bonus
     };
 
     /**
@@ -129,20 +129,25 @@ class RouletteGame {
     }
 
     /**
-     * Calculate pity bonus based on losing streak
+     * Calculate pity bonus based on losing streak and bet amount
      */
-    calculatePityBonus(losingStreak: number): { bonusChance: number; minPayoutMultiplier: number } {
+    calculatePityBonus(losingStreak: number, betAmount: number): { bonusChance: number; flatBonus: number; maxBetForBonus: number } {
         const thresholds = Object.keys(this.PITY_THRESHOLDS)
             .map(k => parseInt(k))
             .sort((a, b) => b - a); // Sort descending
         
         for (const threshold of thresholds) {
             if (losingStreak >= threshold) {
-                return this.PITY_THRESHOLDS[threshold];
+                const pityConfig = this.PITY_THRESHOLDS[threshold];
+                // Cap the pity benefit based on bet size to prevent exploitation
+                if (betAmount > pityConfig.maxBetForBonus) {
+                    return { bonusChance: pityConfig.bonusChance, flatBonus: 0, maxBetForBonus: pityConfig.maxBetForBonus };
+                }
+                return pityConfig;
             }
         }
         
-        return { bonusChance: 0, minPayoutMultiplier: 1.0 };
+        return { bonusChance: 0, flatBonus: 0, maxBetForBonus: 0 };
     }
 
     /**
@@ -152,23 +157,18 @@ class RouletteGame {
         betType: BetType, 
         betValue: string | number, 
         originalResult: { number: number; color: 'red' | 'black' | 'green' },
-        pityBonus: { bonusChance: number; minPayoutMultiplier: number }
+        pityBonus: { bonusChance: number; flatBonus: number; maxBetForBonus: number }
     ): { result: { number: number; color: 'red' | 'black' | 'green' }; forced: boolean } {
         if (pityBonus.bonusChance === 0) {
             return { result: originalResult, forced: false };
         }
 
         const originalWon = this.checkWin(betType, betValue, originalResult);
-        
-        // If already won and no payout boost needed, keep original
-        if (originalWon && pityBonus.minPayoutMultiplier <= 1.0) {
-            return { result: originalResult, forced: false };
-        }
 
         // Check if pity should activate
         const shouldActivatePity = Math.random() * 100 < pityBonus.bonusChance;
         
-        if (!shouldActivatePity && originalWon) {
+        if (!shouldActivatePity) {
             return { result: originalResult, forced: false };
         }
 
@@ -255,7 +255,7 @@ class RouletteGame {
      */
     play(betType: BetType, betValue: string | number, betAmount: number, losingStreak: number = 0): RouletteResult {
         const originalSpinResult = this.spin();
-        const pityBonus = this.calculatePityBonus(losingStreak);
+        const pityBonus = this.calculatePityBonus(losingStreak, betAmount);
         
         const { result: finalResult, forced: pityForced } = this.applyPitySystem(
             betType, 
@@ -265,14 +265,18 @@ class RouletteGame {
         );
 
         const won = this.checkWin(betType, betValue, finalResult);
-        let payout = this.PAYOUTS[betType];
+        const payout = this.PAYOUTS[betType];
         
-        // Apply payout multiplier if pity was applied and provides bonus
-        if (pityForced && pityBonus.minPayoutMultiplier > 1.0) {
-            payout = Math.floor(payout * pityBonus.minPayoutMultiplier);
+        let winAmount = 0;
+        if (won) {
+            // Calculate base win amount
+            winAmount = betAmount * (payout + 1); // +1 to include original bet
+            
+            // Add flat pity bonus if pity was applied and player qualifies
+            if (pityForced && pityBonus.flatBonus > 0 && betAmount <= pityBonus.maxBetForBonus) {
+                winAmount += pityBonus.flatBonus;
+            }
         }
-
-        const winAmount = won ? betAmount * (payout + 1) : 0; // +1 to include original bet
 
         return {
             number: finalResult.number,
@@ -280,7 +284,7 @@ class RouletteGame {
             won,
             payout,
             winAmount,
-            pityApplied: pityForced || (pityBonus.bonusChance > 0 && won),
+            pityApplied: pityForced,
             pityBonusPercentage: pityBonus.bonusChance,
             losingStreak
         };

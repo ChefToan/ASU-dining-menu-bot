@@ -19,16 +19,16 @@ export async function execute(interaction: CommandInteraction) {
         // Get user's current losing streak for pity system info
         const losingStreak = await rouletteService.getCurrentLosingStreak(userId);
         
-        // Calculate pity bonus manually since we don't have access to private method
-        let pityBonus = { bonusChance: 0, minPayoutMultiplier: 1.0 };
-        if (losingStreak >= 15) {
-            pityBonus = { bonusChance: 100, minPayoutMultiplier: 1.0 };
-        } else if (losingStreak >= 12) {
-            pityBonus = { bonusChance: 30, minPayoutMultiplier: 2.0 };
-        } else if (losingStreak >= 8) {
-            pityBonus = { bonusChance: 20, minPayoutMultiplier: 1.5 };
+        // Calculate pity bonus manually based on new balanced system
+        let pityBonus = { bonusChance: 0, flatBonus: 0, maxBetForBonus: 0 };
+        if (losingStreak >= 20) {
+            pityBonus = { bonusChance: 100, flatBonus: 0, maxBetForBonus: 1000 };
+        } else if (losingStreak >= 15) {
+            pityBonus = { bonusChance: 40, flatBonus: 200, maxBetForBonus: 500 };
+        } else if (losingStreak >= 10) {
+            pityBonus = { bonusChance: 25, flatBonus: 100, maxBetForBonus: 200 };
         } else if (losingStreak >= 5) {
-            pityBonus = { bonusChance: 10, minPayoutMultiplier: 1.0 };
+            pityBonus = { bonusChance: 15, flatBonus: 50, maxBetForBonus: 100 };
         }
 
         const oddsEmbed = new EmbedBuilder()
@@ -75,8 +75,8 @@ export async function execute(interaction: CommandInteraction) {
                 pityInfo = `🍀 **Guaranteed Win!** Your next bet is guaranteed to win due to your ${losingStreak} losing streak.`;
             } else {
                 pityInfo = `🍀 **Pity System Active!** +${pityBonus.bonusChance}% win chance on your next bet`;
-                if (pityBonus.minPayoutMultiplier > 1.0) {
-                    pityInfo += ` with ${pityBonus.minPayoutMultiplier}x payout multiplier`;
+                if (pityBonus.flatBonus > 0) {
+                    pityInfo += ` with +t$t${pityBonus.flatBonus} bonus (for bets ≤t$t${pityBonus.maxBetForBonus})`;
                 }
                 pityInfo += ` (${losingStreak} losing streak)`;
             }
@@ -86,7 +86,7 @@ export async function execute(interaction: CommandInteraction) {
         oddsEmbed.addFields(
             { 
                 name: '💡 Pity System Explained', 
-                value: '• 5 losses: +10% win chance\n• 8 losses: +20% win chance + 1.5x payout\n• 12 losses: +30% win chance + 2x payout\n• 15+ losses: Guaranteed win', 
+                value: '• 5 losses: +15% win chance + t$t50 bonus (bets ≤t$t100)\n• 10 losses: +25% win chance + t$t100 bonus (bets ≤t$t200)\n• 15 losses: +40% win chance + t$t200 bonus (bets ≤t$t500)\n• 20+ losses: Guaranteed win (no bonus)', 
                 inline: false 
             },
             { 
