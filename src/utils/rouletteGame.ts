@@ -46,12 +46,16 @@ class RouletteGame {
         [BetType.Column3]: 2      // 2:1
     };
 
-    // Pity system thresholds
-    private readonly PITY_THRESHOLDS: Record<number, { bonusChance: number; flatBonus: number; maxBetForBonus: number }> = {
-        5: { bonusChance: 15, flatBonus: 50, maxBetForBonus: 100 },
-        10: { bonusChance: 25, flatBonus: 100, maxBetForBonus: 200 },
-        15: { bonusChance: 40, flatBonus: 200, maxBetForBonus: 500 },
-        20: { bonusChance: 100, flatBonus: 0, maxBetForBonus: 1000 } // Guaranteed win, no bonus
+    // Maximum bet size that can receive any pity benefits
+    private readonly MAX_PITY_BET_SIZE = 200;
+
+    // Consolation prizes for all bet types (no forced wins, just small bonuses)
+    // Only applies to bets ≤ MAX_PITY_BET_SIZE
+    private readonly CONSOLATION_THRESHOLDS: Record<number, number> = {
+        5: 25,   // 5 losses = t$t25
+        10: 50,  // 10 losses = t$t50  
+        15: 75,  // 15 losses = t$t75 (reduced from 100)
+        25: 100  // 25 losses = t$t100 (reduced from 200)
     };
 
     /**
@@ -129,55 +133,61 @@ class RouletteGame {
     }
 
     /**
-     * Calculate pity bonus based on losing streak and bet amount
+     * Calculate pity bonus with anti-exploitation measures
+     * Only consolation prizes, no guaranteed wins or forced results
      */
-    calculatePityBonus(losingStreak: number, betAmount: number): { bonusChance: number; flatBonus: number; maxBetForBonus: number } {
-        const thresholds = Object.keys(this.PITY_THRESHOLDS)
-            .map(k => parseInt(k))
-            .sort((a, b) => b - a); // Sort descending
-        
-        for (const threshold of thresholds) {
-            if (losingStreak >= threshold) {
-                const pityConfig = this.PITY_THRESHOLDS[threshold];
-                // Cap the pity benefit based on bet size to prevent exploitation
-                if (betAmount > pityConfig.maxBetForBonus) {
-                    return { bonusChance: pityConfig.bonusChance, flatBonus: 0, maxBetForBonus: pityConfig.maxBetForBonus };
+    calculatePityBonus(losingStreak: number, betAmount: number, betType: BetType, userBalance?: number, averageRecentBetSize?: number): { bonusChance: number; flatBonus: number; maxBetForBonus: number; consolationPrize: number } {
+        let pityResult = { bonusChance: 0, flatBonus: 0, maxBetForBonus: 0, consolationPrize: 0 };
+
+        // Only give consolation prizes for reasonable bet sizes
+        if (betAmount <= this.MAX_PITY_BET_SIZE && losingStreak >= 5) {
+            const consolationThresholds = Object.keys(this.CONSOLATION_THRESHOLDS)
+                .map(k => parseInt(k))
+                .sort((a, b) => b - a);
+            
+            for (const threshold of consolationThresholds) {
+                if (losingStreak >= threshold) {
+                    let baseConsolation = this.CONSOLATION_THRESHOLDS[threshold];
+                    
+                    // Anti-exploitation measures:
+                    
+                    // 1. Scale with bet amount to prevent tiny bet farming
+                    const betSizeMultiplier = Math.min(betAmount / 100, 1.0); // Max 1x multiplier at 100+ bet
+                    baseConsolation = Math.floor(baseConsolation * betSizeMultiplier);
+                    
+                    // 2. Scale inversely with user balance to prevent rich player abuse
+                    if (userBalance && userBalance > 1000) {
+                        const balanceReduction = Math.min((userBalance - 1000) / 10000, 0.8); // Max 80% reduction
+                        baseConsolation = Math.floor(baseConsolation * (1 - balanceReduction));
+                    }
+                    
+                    // 3. Scale with average bet size during streak to prevent manipulation
+                    if (averageRecentBetSize && averageRecentBetSize < betAmount * 0.5) {
+                        const manipulationPenalty = 0.5; // 50% reduction for streak building
+                        baseConsolation = Math.floor(baseConsolation * manipulationPenalty);
+                    }
+                    
+                    // Minimum consolation of 5 to prevent it from going to 0
+                    pityResult.consolationPrize = Math.max(baseConsolation, 5);
+                    break;
                 }
-                return pityConfig;
             }
         }
         
-        return { bonusChance: 0, flatBonus: 0, maxBetForBonus: 0 };
+        return pityResult;
     }
 
     /**
-     * Apply pity system to spin result
+     * Apply pity system to spin result - NO FORCED WINS, only consolation prizes
      */
     applyPitySystem(
         betType: BetType, 
         betValue: string | number, 
         originalResult: { number: number; color: 'red' | 'black' | 'green' },
-        pityBonus: { bonusChance: number; flatBonus: number; maxBetForBonus: number }
+        pityBonus: { bonusChance: number; flatBonus: number; maxBetForBonus: number; consolationPrize: number }
     ): { result: { number: number; color: 'red' | 'black' | 'green' }; forced: boolean } {
-        if (pityBonus.bonusChance === 0) {
-            return { result: originalResult, forced: false };
-        }
-
-        const originalWon = this.checkWin(betType, betValue, originalResult);
-
-        // Check if pity should activate
-        const shouldActivatePity = Math.random() * 100 < pityBonus.bonusChance;
-        
-        if (!shouldActivatePity) {
-            return { result: originalResult, forced: false };
-        }
-
-        if (shouldActivatePity || pityBonus.bonusChance >= 100) {
-            // Force a win by generating a favorable result
-            const favorableResult = this.generateFavorableResult(betType, betValue);
-            return { result: favorableResult, forced: true };
-        }
-
+        // No forced wins - pity system only provides consolation prizes
+        // The spin result is always natural and unmodified
         return { result: originalResult, forced: false };
     }
 
@@ -251,11 +261,11 @@ class RouletteGame {
     }
 
     /**
-     * Play a round of roulette with pity system
+     * Play a round of roulette with exploit-proof pity system
      */
-    play(betType: BetType, betValue: string | number, betAmount: number, losingStreak: number = 0): RouletteResult {
+    play(betType: BetType, betValue: string | number, betAmount: number, losingStreak: number = 0, userBalance?: number): RouletteResult {
         const originalSpinResult = this.spin();
-        const pityBonus = this.calculatePityBonus(losingStreak, betAmount);
+        const pityBonus = this.calculatePityBonus(losingStreak, betAmount, betType, userBalance);
         
         const { result: finalResult, forced: pityForced } = this.applyPitySystem(
             betType, 
@@ -271,11 +281,11 @@ class RouletteGame {
         if (won) {
             // Calculate base win amount
             winAmount = betAmount * (payout + 1); // +1 to include original bet
-            
-            // Add flat pity bonus if pity was applied and player qualifies
-            if (pityForced && pityBonus.flatBonus > 0 && betAmount <= pityBonus.maxBetForBonus) {
-                winAmount += pityBonus.flatBonus;
-            }
+        }
+
+        // Always add consolation prize if applicable (regardless of win/loss)
+        if (pityBonus.consolationPrize > 0) {
+            winAmount += pityBonus.consolationPrize;
         }
 
         return {
@@ -284,8 +294,8 @@ class RouletteGame {
             won,
             payout,
             winAmount,
-            pityApplied: pityForced,
-            pityBonusPercentage: pityBonus.bonusChance,
+            pityApplied: pityBonus.consolationPrize > 0, // Only true when consolation prize given
+            pityBonusPercentage: 0, // No win chance bonuses anymore
             losingStreak
         };
     }

@@ -19,6 +19,11 @@ export async function execute(interaction: CommandInteraction) {
 
         // Check if user is eligible for bankruptcy bailout
         const workCheck = await userService.canWork(userId);
+        const currentBalance = await userService.getBalance(userId);
+        
+        // Enhanced debugging for bankruptcy bailout
+        console.log(`Work attempt - User: ${userId}, Balance: ${currentBalance}, CanWork: ${workCheck.canWork}, BankruptcyBailout: ${workCheck.bankruptcyBailout}`);
+        
         const workResult = await userService.doWork(userId, username);
 
         if (!workResult.success) {
@@ -27,11 +32,23 @@ export async function execute(interaction: CommandInteraction) {
             const minutes = Math.floor(timeRemaining / 60000);
             const seconds = Math.floor((timeRemaining % 60000) / 1000);
 
+            let cooldownDescription = `You need to wait **${minutes}m ${seconds}s** before you can work again.`;
+            
+            // Check if they're broke and might be eligible for bailout
+            if (currentBalance === 0) {
+                const user = await userService.getOrCreateUser(userId);
+                if (user.bankruptcyBailoutCount === 0 && !user.bankruptcyFromGambling) {
+                    cooldownDescription += '\n\n💡 **Note:** If you go broke from gambling, you\'ll get a one-time bailout to work without cooldown!';
+                } else if (user.bankruptcyBailoutCount > 0) {
+                    cooldownDescription += '\n\n⚠️ **Note:** You already used your one-time bankruptcy bailout.';
+                }
+            }
+
             const cooldownEmbed = new EmbedBuilder()
                 .setColor(Colors.Red)
                 .setTitle('⏰ You\'re still on break!')
-                .setDescription(`You need to wait **${minutes}m ${seconds}s** before you can work again.`)
-                .setFooter({ text: `Current balance: ${userService.formatCurrency(await userService.getBalance(userId))}` })
+                .setDescription(cooldownDescription)
+                .setFooter({ text: `Current balance: ${userService.formatCurrency(currentBalance)}` })
                 .setTimestamp();
 
             await interaction.editReply({ embeds: [cooldownEmbed] });

@@ -205,8 +205,8 @@ export async function execute(interaction: CommandInteraction) {
                 // Get current losing streak
                 const losingStreak = await rouletteService.getCurrentLosingStreak(userId);
                 
-                // Play the game with pity system
-                const result = rouletteGame.play(betType, betValue, betAmount, losingStreak);
+                // Play the game with exploit-proof pity system
+                const result = rouletteGame.play(betType, betValue, betAmount, losingStreak, currentBalance);
                 
                 const balanceBefore = currentBalance - betAmount;
                 let balanceAfter = balanceBefore;
@@ -256,23 +256,31 @@ export async function execute(interaction: CommandInteraction) {
                         { name: 'Bet Amount', value: userService.formatCurrency(betAmount), inline: true }
                     );
 
-                // Add pity system information
-                if (result.pityBonusPercentage > 0) {
-                    if (result.losingStreak >= 20) {
-                        resultEmbed.addFields({ name: '🍀 Pity System', value: '**Guaranteed Win!** You had a very long losing streak.', inline: false });
-                    } else if (result.pityApplied) {
-                        let pityMessage = `Lucky boost activated! (+${result.pityBonusPercentage}% chance)`;
-                        // Check if they got a flat bonus (estimate based on bet amount and streak)
-                        if (result.losingStreak >= 15 && betAmount <= 500) {
-                            pityMessage += '\n**Bonus:** +t$t200 added to winnings!';
-                        } else if (result.losingStreak >= 10 && betAmount <= 200) {
-                            pityMessage += '\n**Bonus:** +t$t100 added to winnings!';
-                        } else if (result.losingStreak >= 5 && betAmount <= 100) {
-                            pityMessage += '\n**Bonus:** +t$t50 added to winnings!';
+                // Add pity system information (consolation prizes only)
+                if (result.pityApplied || result.losingStreak >= 5) {
+                    let pityMessage = '';
+                    
+                    // Check for consolation prize (only for bets ≤200)
+                    if (result.pityApplied && betAmount <= 200) {
+                        let consolationAmount = 0;
+                        if (result.losingStreak >= 25) consolationAmount = 100;
+                        else if (result.losingStreak >= 15) consolationAmount = 75;
+                        else if (result.losingStreak >= 10) consolationAmount = 50;
+                        else if (result.losingStreak >= 5) consolationAmount = 25;
+                        
+                        if (consolationAmount > 0) {
+                            pityMessage += `🎁 **Consolation Prize:** +t$t${consolationAmount} added to your winnings!\n`;
                         }
-                        resultEmbed.addFields({ name: '🍀 Pity System', value: pityMessage, inline: false });
-                    } else if (result.losingStreak >= 5) {
-                        resultEmbed.addFields({ name: '🎯 Losing Streak', value: `${result.losingStreak} losses in a row. Better luck next time!`, inline: false });
+                    } else if (betAmount > 200 && result.losingStreak >= 5) {
+                        pityMessage += `🚫 **Large Bet:** No consolation prize for bets >t$t200 (prevents exploitation)\n`;
+                    }
+                    
+                    if (result.losingStreak >= 5) {
+                        pityMessage += `🎯 **Losing Streak:** ${result.losingStreak} losses in a row. Hang in there!`;
+                    }
+                    
+                    if (pityMessage) {
+                        resultEmbed.addFields({ name: '🎁 Consolation System', value: pityMessage.trim(), inline: false });
                     }
                 }
 
@@ -291,16 +299,29 @@ export async function execute(interaction: CommandInteraction) {
                     { name: 'New Balance', value: userService.formatCurrency(balanceAfter), inline: false }
                 );
 
-                // Check for bankruptcy bailout (all-in loss that results in 0 balance)
-                // Only show if user hasn't used their bailout yet
-                if (!result.won && isAllIn && balanceAfter === 0) {
+                // Check for bankruptcy bailout (loss that results in 0 balance)
+                // Apply to all-in bets OR when balance drops to 0 regardless
+                if (!result.won && balanceAfter === 0) {
+                    console.log(`Bankruptcy check - User: ${userId}, isAllIn: ${isAllIn}, balanceAfter: ${balanceAfter}, won: ${result.won}`);
                     const user = await userService.getOrCreateUser(userId);
+                    console.log(`User bailout status - Count: ${user.bankruptcyBailoutCount}, FromGambling: ${user.bankruptcyFromGambling}`);
+                    
                     if (user.bankruptcyBailoutCount === 0) {
                         await userService.setBankruptcyBailout(userId);
+                        console.log(`Bankruptcy bailout activated for user ${userId}`);
                         resultEmbed.addFields(
                             { 
                                 name: '🆘 Bankruptcy Bailout Activated!', 
-                                value: 'You can use `/work` once without cooldown to get back on your feet!', 
+                                value: '**Your balance is now 0!** You can use `/work` once without cooldown to get back on your feet!\n\n*This is a one-time bailout - use it wisely!*', 
+                                inline: false 
+                            }
+                        );
+                    } else {
+                        console.log(`User ${userId} already used their bailout (${user.bankruptcyBailoutCount} times)`);
+                        resultEmbed.addFields(
+                            { 
+                                name: '💸 Broke!', 
+                                value: 'Your balance is now 0! You already used your one-time bailout. Use `/work` to earn money (30 min cooldown).', 
                                 inline: false 
                             }
                         );

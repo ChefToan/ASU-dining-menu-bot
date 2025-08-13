@@ -159,8 +159,42 @@ export async function execute(interaction: CommandInteraction) {
             return;
         }
 
+        // Check bankruptcy bailout restrictions to prevent multi-account farming
+        const senderUser = await userService.getOrCreateUser(sender.id, sender.username);
+        const receiverUser = await userService.getOrCreateUser(receiver.id, receiver.username);
+        
+        if (senderUser.bankruptcyBailoutCount > 0 || receiverUser.bankruptcyBailoutCount > 0) {
+            // Add 10% transfer fee for accounts that used bankruptcy bailout
+            const transferFee = Math.ceil(amount * 0.10);
+            const totalCost = amount + transferFee;
+            
+            if (senderBalance < totalCost) {
+                const feeEmbed = new EmbedBuilder()
+                    .setColor(Colors.Red)
+                    .setTitle('💰 Bankruptcy Bailout Fee')
+                    .setDescription('Accounts that used bankruptcy bailout have a 10% transfer fee to prevent exploitation.')
+                    .addFields(
+                        { name: 'Transfer Amount', value: userService.formatCurrency(amount), inline: true },
+                        { name: 'Transfer Fee (10%)', value: userService.formatCurrency(transferFee), inline: true },
+                        { name: 'Total Cost', value: userService.formatCurrency(totalCost), inline: true },
+                        { name: 'Your Balance', value: userService.formatCurrency(senderBalance), inline: true },
+                        { name: 'Shortfall', value: userService.formatCurrency(totalCost - senderBalance), inline: true }
+                    )
+                    .setFooter({ text: 'This prevents multi-account bailout farming' })
+                    .setTimestamp();
+
+                await interaction.editReply({ embeds: [feeEmbed] });
+                return;
+            }
+        }
+
         // Create receiver user if doesn't exist
         await userService.getOrCreateUser(receiver.id, receiver.username);
+
+        // Check if bankruptcy bailout fee applies for confirmation
+        const hasBailoutFee = senderUser.bankruptcyBailoutCount > 0 || receiverUser.bankruptcyBailoutCount > 0;
+        const transferFee = hasBailoutFee ? Math.ceil(amount * 0.10) : 0;
+        const totalCost = amount + transferFee;
 
         // Create confirmation embed
         const confirmEmbed = new EmbedBuilder()
@@ -173,17 +207,29 @@ export async function execute(interaction: CommandInteraction) {
                 { name: 'Amount', value: userService.formatCurrency(amount), inline: true }
             );
 
+        if (hasBailoutFee) {
+            confirmEmbed.addFields(
+                { name: 'Transfer Fee (10%)', value: userService.formatCurrency(transferFee), inline: true },
+                { name: 'Total Cost', value: userService.formatCurrency(totalCost), inline: true }
+            );
+        }
+
         if (message) {
             confirmEmbed.addFields({ name: 'Message', value: message, inline: false });
         }
 
         confirmEmbed.addFields(
-            { name: 'Your Balance After', value: userService.formatCurrency(senderBalance - amount), inline: true },
+            { name: 'Your Balance After', value: userService.formatCurrency(senderBalance - totalCost), inline: true },
             { name: 'Daily Transfers Used', value: `${dailyLimits.transfersToday + 1}/${MAX_DAILY_TRANSFERS}`, inline: true }
         );
 
-        confirmEmbed.setFooter({ text: 'This action cannot be undone' })
-            .setTimestamp();
+        if (hasBailoutFee) {
+            confirmEmbed.setFooter({ text: 'Bankruptcy bailout accounts have transfer fees to prevent exploitation' });
+        } else {
+            confirmEmbed.setFooter({ text: 'This action cannot be undone' });
+        }
+
+        confirmEmbed.setTimestamp();
 
         // Create confirmation buttons
         const row = new ActionRowBuilder<ButtonBuilder>()
@@ -247,8 +293,13 @@ export async function execute(interaction: CommandInteraction) {
                         throw new Error('Daily limits exceeded');
                     }
 
-                    // Perform the transfer
-                    const success = await performTransfer(sender, receiver, amount, message);
+                    // Check if bankruptcy bailout fee applies
+                    const senderUser = await userService.getOrCreateUser(sender.id, sender.username);
+                    const receiverUser = await userService.getOrCreateUser(receiver.id, receiver.username);
+                    const hasBailoutFee = senderUser.bankruptcyBailoutCount > 0 || receiverUser.bankruptcyBailoutCount > 0;
+                    
+                    // Perform the transfer (with fee if applicable)
+                    const success = await performTransfer(sender, receiver, amount, message, hasBailoutFee);
                     
                     if (!success) {
                         throw new Error('Transfer failed');
@@ -434,18 +485,22 @@ async function checkDailyLimits(userId: string, amount: number): Promise<{
     }
 }
 
-async function performTransfer(sender: User, receiver: User, amount: number, message?: string | null): Promise<boolean> {
+async function performTransfer(sender: User, receiver: User, amount: number, message?: string | null, hasBailoutFee: boolean = false): Promise<boolean> {
     try {
+        // Calculate total cost including potential bankruptcy bailout fee
+        const transferFee = hasBailoutFee ? Math.ceil(amount * 0.10) : 0;
+        const totalCost = amount + transferFee;
+        
         // Get current balances
         const senderBalance = await userService.getBalance(sender.id);
         const receiverBalance = await userService.getBalance(receiver.id);
 
-        if (senderBalance < amount) {
+        if (senderBalance < totalCost) {
             return false;
         }
 
         // Perform the transfer atomically
-        const senderSuccess = await userService.removeBalance(sender.id, amount, sender.username);
+        const senderSuccess = await userService.removeBalance(sender.id, totalCost, sender.username);
         if (!senderSuccess) {
             return false;
         }
@@ -463,7 +518,9 @@ async function performTransfer(sender: User, receiver: User, amount: number, mes
                 receiver_username: receiver.username,
                 amount: amount,
                 transaction_type: 'transfer',
-                description: message || 'User to user transfer',
+                description: hasBailoutFee ? 
+                    `${message || 'User to user transfer'} (${transferFee} fee for bankruptcy bailout)` : 
+                    (message || 'User to user transfer'),
                 sender_balance_before: senderBalance,
                 sender_balance_after: newSenderBalance,
                 receiver_balance_before: receiverBalance,

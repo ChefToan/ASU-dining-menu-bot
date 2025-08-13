@@ -154,7 +154,10 @@ export class UserService {
             // Check if user is broke and eligible for bankruptcy bailout
             // Only trigger for users who went broke from gambling specifically
             // Limit to maximum 1 bailout per user to prevent exploitation
+            console.log(`CanWork check - User: ${userId}, Balance: ${user.balance}, BailoutCount: ${user.bankruptcyBailoutCount}, FromGambling: ${user.bankruptcyFromGambling}`);
+            
             if (user.balance === 0 && user.bankruptcyBailoutCount === 0 && user.bankruptcyFromGambling) {
+                console.log(`Bankruptcy bailout eligible for user ${userId}`);
                 return { canWork: true, bankruptcyBailout: true };
             }
 
@@ -272,6 +275,7 @@ export class UserService {
     async setBankruptcyBailout(userId: string): Promise<void> {
         try {
             const user = await this.getOrCreateUser(userId);
+            console.log(`setBankruptcyBailout - User: ${userId}, Current bailout count: ${user.bankruptcyBailoutCount}`);
             
             // Only set gambling flag if user hasn't used their bailout yet
             if (user.bankruptcyBailoutCount === 0) {
@@ -283,6 +287,9 @@ export class UserService {
                     .eq('user_id', userId);
 
                 if (error) throw error;
+                console.log(`setBankruptcyBailout - Successfully set bankruptcy_from_gambling=true for user ${userId}`);
+            } else {
+                console.log(`setBankruptcyBailout - User ${userId} already used their bailout, not setting flag`);
             }
         } catch (error) {
             console.error('Error setting bankruptcy bailout:', error);
