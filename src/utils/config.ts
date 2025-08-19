@@ -20,6 +20,10 @@ export const DINING_HALLS = {
     mu: {
         name: "MU",
         id: DiningHallId.MU
+    },
+    hida: {
+        name: "HIDA",
+        id: DiningHallId.HIDA
     }
 };
 
@@ -67,7 +71,8 @@ export const MENU_CONFIG = {
         { name: 'Manzi', value: 'manzi' },
         { name: 'Hassay', value: 'hassay' },
         { name: 'Tooker', value: 'tooker' },
-        { name: 'MU (Pitchforks)', value: 'mu' }
+        { name: 'MU (Pitchforks)', value: 'mu' },
+        { name: 'HIDA', value: 'hida' }
     ],
 
     // Collector timeouts

@@ -45,7 +45,8 @@ export enum DiningHallId {
     Manzi = "4294",
     Hassay = "3360",
     Tooker = "10585",
-    MU = "4293"
+    MU = "4293",
+    HIDA = "88279"
 }
 
 // Mapping of meal period names to their IDs
