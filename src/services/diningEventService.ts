@@ -296,7 +296,30 @@ export class DiningEventService {
         }
     }
 
-    // Helper method to parse time from string (12hr or 24hr format)
+    // Helper method to parse date from string (MM/DD/YYYY format)
+    parseDate(dateStr?: string): Date {
+        if (!dateStr) {
+            return new Date(); // Return today if no date provided
+        }
+
+        // Validate date format MM/DD/YYYY
+        const dateMatch = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+        if (!dateMatch) {
+            throw new Error('Invalid date format. Please use MM/DD/YYYY format.');
+        }
+
+        const [, month, day, year] = dateMatch;
+        const parsedDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+        
+        // Validate that the date is valid
+        if (isNaN(parsedDate.getTime())) {
+            throw new Error('Invalid date. Please provide a valid date.');
+        }
+
+        return parsedDate;
+    }
+
+    // Helper method to parse time from string (12hr or 24hr format) and apply to specific date
     parseTime(timeStr: string, baseDate: Date = new Date()): Date | null {
         try {
             const time = timeStr.toLowerCase().trim();
@@ -334,6 +357,18 @@ export class DiningEventService {
         } catch (error) {
             return null;
         }
+    }
+
+    // Helper method to convert any date to MST (GMT-7)
+    toMST(date: Date): Date {
+        // Create a new date object to avoid mutating the original
+        const mstDate = new Date(date.toLocaleString("en-US", {timeZone: "America/Phoenix"}));
+        return mstDate;
+    }
+
+    // Helper method to get current MST time
+    getMSTNow(): Date {
+        return this.toMST(new Date());
     }
 
     // Validate if time is within meal period
@@ -388,18 +423,18 @@ export class DiningEventService {
     }
 
     // Get meal time validation error message
-    getMealTimeErrorMessage(mealType: 'breakfast' | 'lunch' | 'light_lunch' | 'dinner' | 'brunch'): string {
+    getMealTimeErrorMessage(mealType: 'breakfast' | 'lunch' | 'light_lunch' | 'dinner' | 'brunch', timeInput: string): string {
         switch (mealType) {
             case 'breakfast':
-                return 'Breakfast is only available Monday-Friday from 7:00 AM to 11:00 AM.';
+                return `Invalid time "${timeInput}". Breakfast is only available Monday-Friday from 7:00 AM to 11:00 AM.`;
             case 'brunch':
-                return 'Brunch is only available Saturday-Sunday from 10:00 AM to 2:00 PM.';
+                return `Invalid time "${timeInput}". Brunch is only available Saturday-Sunday from 10:00 AM to 2:00 PM.`;
             case 'lunch':
-                return 'Lunch is only available Monday-Friday from 11:00 AM to 2:00 PM.';
+                return `Invalid time "${timeInput}". Lunch is only available Monday-Friday from 11:00 AM to 2:00 PM.`;
             case 'light_lunch':
-                return 'Light lunch is available Monday-Sunday from 2:00 PM to 4:30 PM.';
+                return `Invalid time "${timeInput}". Light lunch is available Monday-Sunday from 2:00 PM to 4:30 PM.`;
             case 'dinner':
-                return 'Dinner is available Monday-Thursday from 4:30 PM to 9:00 PM, Friday-Saturday from 4:30 PM to 7:00 PM, and Sunday from 4:30 PM to 8:00 PM.';
+                return `Invalid time "${timeInput}". Dinner is available Monday-Thursday from 4:30 PM to 9:00 PM, Friday-Saturday from 4:30 PM to 7:00 PM, and Sunday from 4:30 PM to 8:00 PM.`;
             default:
                 return 'Invalid meal type.';
         }

@@ -34,11 +34,17 @@ export const data = new SlashCommandBuilder()
         option.setName('time')
             .setDescription('What time for light lunch (e.g., "2:30pm", "14:00", "15:30")')
             .setRequired(true)
+    )
+    .addStringOption(option =>
+        option.setName('date')
+            .setDescription('Date for light lunch in MM/DD/YYYY format (optional, defaults to today)')
+            .setRequired(false)
     );
 
 export async function execute(interaction: CommandInteraction) {
     try {
         const diningHallOption = interaction.options.get('dining_hall')?.value as string;
+        const dateInput = interaction.options.get('date')?.value as string;
         const timeInput = interaction.options.get('time')?.value as string;
         const creator = interaction.user;
         const channelId = interaction.channelId!;
@@ -54,9 +60,20 @@ export async function execute(interaction: CommandInteraction) {
             return;
         }
 
-        // Parse the time
-        const currentDate = new Date();
-        const mealTime = diningEventService.parseTime(timeInput, currentDate);
+        // Parse the date (defaults to today if not provided)
+        let targetDate: Date;
+        try {
+            targetDate = diningEventService.parseDate(dateInput);
+        } catch (error) {
+            await interaction.reply({
+                content: (error as Error).message,
+                ephemeral: true
+            });
+            return;
+        }
+
+        // Parse the time and apply to the target date
+        const mealTime = diningEventService.parseTime(timeInput, targetDate);
         
         if (!mealTime) {
             await interaction.reply({
@@ -69,15 +86,20 @@ export async function execute(interaction: CommandInteraction) {
         // Validate light lunch time range
         if (!diningEventService.isValidMealTime('light_lunch', mealTime)) {
             await interaction.reply({
-                content: diningEventService.getMealTimeErrorMessage('light_lunch'),
+                content: diningEventService.getMealTimeErrorMessage('light_lunch', timeInput),
                 ephemeral: true
             });
             return;
         }
 
-        // If the time is in the past today, assume it's for tomorrow
-        if (mealTime <= currentDate) {
-            mealTime.setDate(mealTime.getDate() + 1);
+        // Check if the meal time is in the past
+        const nowMST = diningEventService.getMSTNow();
+        if (mealTime <= nowMST) {
+            await interaction.reply({
+                content: 'The specified time has already passed. Please choose a future time.',
+                ephemeral: true
+            });
+            return;
         }
 
         // Check if there's already an active light lunch event in this channel for the same day
@@ -90,17 +112,20 @@ export async function execute(interaction: CommandInteraction) {
             return;
         }
 
-        // Format the time for display
-        const timeString = mealTime.toLocaleTimeString('en-US', {
+        // Format the time and date for display in MST
+        const mstMealTime = diningEventService.toMST(mealTime);
+        const timeString = mstMealTime.toLocaleTimeString('en-US', {
             hour: 'numeric',
             minute: '2-digit',
-            hour12: true
+            hour12: true,
+            timeZone: 'America/Phoenix'
         }).toLowerCase();
 
-        const dateString = mealTime.toLocaleDateString('en-US', {
+        const dateString = mstMealTime.toLocaleDateString('en-US', {
             weekday: 'short',
             month: 'short',
-            day: 'numeric'
+            day: 'numeric',
+            timeZone: 'America/Phoenix'
         });
 
         // Create the embed message

@@ -13,6 +13,7 @@ import * as brunchCommand from './commands/food/brunchCommand';
 import * as lunchCommand from './commands/food/lunchCommand';
 import * as lightLunchCommand from './commands/food/lightLunchCommand';
 import * as dinnerCommand from './commands/food/dinnerCommand';
+// import * as testMealCommand from './commands/food/testMealCommand';
 import { REST, Routes } from 'discord.js';
 import { db } from './services/database';
 import { podrunService } from './services/podrunService';
@@ -54,6 +55,7 @@ client.commands.set(brunchCommand.data.name, brunchCommand);
 client.commands.set(lunchCommand.data.name, lunchCommand);
 client.commands.set(lightLunchCommand.data.name, lightLunchCommand);
 client.commands.set(dinnerCommand.data.name, dinnerCommand);
+// client.commands.set(testMealCommand.data.name, testMealCommand);
 
 
 // When the client is ready, run this code
@@ -130,7 +132,8 @@ const registerCommands = async () => {
         brunchCommand.data.toJSON(),
         lunchCommand.data.toJSON(),
         lightLunchCommand.data.toJSON(),
-        dinnerCommand.data.toJSON()
+        dinnerCommand.data.toJSON(),
+        // testMealCommand.data.toJSON()
     ];
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN!);
 

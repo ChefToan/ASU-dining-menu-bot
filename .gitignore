@@ -51,3 +51,4 @@ temp/
 temp_stuff
 
 database
+src/commands/food/testMealCommand.ts

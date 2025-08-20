@@ -22,18 +22,35 @@ export const data = new SlashCommandBuilder()
         option.setName('time')
             .setDescription('What time for the podrun (e.g., "6:30pm", "18:00", "19:15")')
             .setRequired(true)
+    )
+    .addStringOption(option =>
+        option.setName('date')
+            .setDescription('Date for podrun in MM/DD/YYYY format (optional, defaults to today)')
+            .setRequired(false)
     );
 
 export async function execute(interaction: CommandInteraction) {
     try {
+        const dateInput = interaction.options.get('date')?.value as string;
         const timeInput = interaction.options.get('time')?.value as string;
         const creator = interaction.user;
         const channelId = interaction.channelId!;
         const guildId = interaction.guildId!;
 
-        // Parse the time
-        const currentDate = new Date();
-        const runTime = diningEventService.parseTime(timeInput, currentDate);
+        // Parse the date (defaults to today if not provided)
+        let targetDate: Date;
+        try {
+            targetDate = diningEventService.parseDate(dateInput);
+        } catch (error) {
+            await interaction.reply({
+                content: (error as Error).message,
+                ephemeral: true
+            });
+            return;
+        }
+
+        // Parse the time and apply to the target date
+        const runTime = diningEventService.parseTime(timeInput, targetDate);
         
         if (!runTime) {
             await interaction.reply({
@@ -43,9 +60,14 @@ export async function execute(interaction: CommandInteraction) {
             return;
         }
 
-        // If the time is in the past today, assume it's for tomorrow
-        if (runTime <= currentDate) {
-            runTime.setDate(runTime.getDate() + 1);
+        // Check if the podrun time is in the past
+        const nowMST = diningEventService.getMSTNow();
+        if (runTime <= nowMST) {
+            await interaction.reply({
+                content: 'The specified time has already passed. Please choose a future time.',
+                ephemeral: true
+            });
+            return;
         }
 
         // Check if there's already an active podrun in this channel for the same day
@@ -61,17 +83,20 @@ export async function execute(interaction: CommandInteraction) {
         // Calculate the run time and start time
         const startTime = new Date();
         
-        // Format the time for display
-        const timeString = runTime.toLocaleTimeString('en-US', {
+        // Format the time and date for display in MST
+        const mstRunTime = diningEventService.toMST(runTime);
+        const timeString = mstRunTime.toLocaleTimeString('en-US', {
             hour: 'numeric',
             minute: '2-digit',
-            hour12: true
+            hour12: true,
+            timeZone: 'America/Phoenix'
         }).toLowerCase();
 
-        const dateString = runTime.toLocaleDateString('en-US', {
+        const dateString = mstRunTime.toLocaleDateString('en-US', {
             weekday: 'short',
             month: 'short',
-            day: 'numeric'
+            day: 'numeric',
+            timeZone: 'America/Phoenix'
         });
 
         // Create the embed message
