@@ -192,7 +192,7 @@ export function createStationSelectionEmbed(
     period: Period
 ): EmbedBuilder {
     const standardHours = getStandardMealHours(period.name);
-    let description = `Here are the menu options for **${period.name}** ${standardHours} at **${displayName}**`;
+    let description = `Here are the menu options for **${period.name}** ${standardHours}`;
     description += `\n\nPlease select a station to view available items.`;
 
     return new EmbedBuilder()
@@ -210,7 +210,7 @@ export function createStationMenuEmbed(
     stationContent: string
 ): EmbedBuilder {
     const standardHours = getStandardMealHours(period.name);
-    let description = `Here are the menu options for **${period.name}** ${standardHours} at **${displayName}**`;
+    let description = `Here are the menu options for **${period.name}** ${standardHours}`;
     description += `\n\n**${stationName}**\n${stationContent}`;
 
     return new EmbedBuilder()
