@@ -81,6 +81,11 @@ client.once(Events.ClientReady, async (readyClient) => {
     await diningEventService.cleanupExpiredEvents();
     console.log('✅ Expired dining events cleaned up');
 
+    // Clean up expired cache entries on startup
+    console.log('Cleaning up expired cache entries...');
+    await db.cleanExpiredCache();
+    console.log('✅ Expired cache entries cleaned up');
+
     // Start menu refresh scheduler
     console.log('Starting menu cache scheduler...');
     menuScheduler.start();
