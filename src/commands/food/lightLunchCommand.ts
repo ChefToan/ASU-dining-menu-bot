@@ -66,6 +66,15 @@ export async function execute(interaction: CommandInteraction) {
             return;
         }
 
+        // Validate light lunch time range
+        if (!diningEventService.isValidMealTime('light_lunch', mealTime)) {
+            await interaction.reply({
+                content: diningEventService.getMealTimeErrorMessage('light_lunch'),
+                ephemeral: true
+            });
+            return;
+        }
+
         // If the time is in the past today, assume it's for tomorrow
         if (mealTime <= currentDate) {
             mealTime.setDate(mealTime.getDate() + 1);
@@ -85,15 +94,13 @@ export async function execute(interaction: CommandInteraction) {
         const timeString = mealTime.toLocaleTimeString('en-US', {
             hour: 'numeric',
             minute: '2-digit',
-            hour12: true,
-            timeZone: 'America/Phoenix' // Arizona time (ASU is in Arizona)
+            hour12: true
         }).toLowerCase();
 
         const dateString = mealTime.toLocaleDateString('en-US', {
             weekday: 'short',
             month: 'short',
-            day: 'numeric',
-            timeZone: 'America/Phoenix'
+            day: 'numeric'
         });
 
         // Create the embed message

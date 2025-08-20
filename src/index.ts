@@ -9,6 +9,7 @@ import * as leaderboardCommand from './commands/roulette/leaderboardCommand';
 import * as payCommand from './commands/roulette/payCommand';
 import * as menuCommand from './commands/food/menuCommand';
 import * as breakfastCommand from './commands/food/breakfastCommand';
+import * as brunchCommand from './commands/food/brunchCommand';
 import * as lunchCommand from './commands/food/lunchCommand';
 import * as lightLunchCommand from './commands/food/lightLunchCommand';
 import * as dinnerCommand from './commands/food/dinnerCommand';
@@ -49,6 +50,7 @@ client.commands.set(leaderboardCommand.data.name, leaderboardCommand);
 client.commands.set(payCommand.data.name, payCommand);
 client.commands.set(menuCommand.data.name, menuCommand);
 client.commands.set(breakfastCommand.data.name, breakfastCommand);
+client.commands.set(brunchCommand.data.name, brunchCommand);
 client.commands.set(lunchCommand.data.name, lunchCommand);
 client.commands.set(lightLunchCommand.data.name, lightLunchCommand);
 client.commands.set(dinnerCommand.data.name, dinnerCommand);
@@ -125,6 +127,7 @@ const registerCommands = async () => {
         payCommand.data.toJSON(),
         menuCommand.data.toJSON(),
         breakfastCommand.data.toJSON(),
+        brunchCommand.data.toJSON(),
         lunchCommand.data.toJSON(),
         lightLunchCommand.data.toJSON(),
         dinnerCommand.data.toJSON()

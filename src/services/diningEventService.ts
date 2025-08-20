@@ -8,7 +8,7 @@ export interface DiningEventData {
     guildId: string;
     channelId: string;
     messageId?: string;
-    mealType: 'breakfast' | 'lunch' | 'light_lunch' | 'dinner';
+    mealType: 'breakfast' | 'lunch' | 'light_lunch' | 'dinner' | 'brunch';
     diningHall: string;
     startTime: Date;
     mealTime: Date;
@@ -32,7 +32,7 @@ export class DiningEventService {
         creator: User,
         guildId: string,
         channelId: string,
-        mealType: 'breakfast' | 'lunch' | 'light_lunch' | 'dinner',
+        mealType: 'breakfast' | 'lunch' | 'light_lunch' | 'dinner' | 'brunch',
         diningHall: string,
         startTime: Date,
         mealTime: Date,
@@ -248,11 +248,11 @@ export class DiningEventService {
 
     async cleanupExpiredEvents(eventKey?: string): Promise<boolean> {
         try {
-            const nowMST = this.getMSTDate();
+            const now = new Date();
             let query = db.getClient()
                 .from('dining_events')
                 .update({ status: 'completed' })
-                .lt('meal_time', nowMST.toISOString())
+                .lt('meal_time', now.toISOString())
                 .eq('status', 'active');
 
             // If specific event key provided, only clean up that one
@@ -296,31 +296,10 @@ export class DiningEventService {
         }
     }
 
-    // Helper method to get current MST time
-    private getMSTDate(): Date {
-        const now = new Date();
-        // Convert to MST (UTC-7)
-        const mstOffset = -7 * 60; // MST is UTC-7
-        const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
-        const mst = new Date(utc + (mstOffset * 60000));
-        return mst;
-    }
-
-    // Helper method to convert any date to MST
-    private toMST(date: Date): Date {
-        const mstOffset = -7 * 60; // MST is UTC-7
-        const utc = date.getTime() + (date.getTimezoneOffset() * 60000);
-        const mst = new Date(utc + (mstOffset * 60000));
-        return mst;
-    }
-
-    // Helper method to parse time from string (12hr or 24hr format) in MST
+    // Helper method to parse time from string (12hr or 24hr format)
     parseTime(timeStr: string, baseDate: Date = new Date()): Date | null {
         try {
             const time = timeStr.toLowerCase().trim();
-            
-            // Use MST base date
-            const mstBaseDate = this.toMST(baseDate);
             
             // Handle 12-hour format (e.g., "2:30pm", "11:00 am")
             const twelveHourMatch = time.match(/^(\d{1,2}):?(\d{0,2})\s*(am|pm)$/);
@@ -332,7 +311,7 @@ export class DiningEventService {
                 if (period === 'pm' && hour !== 12) hour += 12;
                 if (period === 'am' && hour === 12) hour = 0;
                 
-                const result = new Date(mstBaseDate);
+                const result = new Date(baseDate);
                 result.setHours(hour, minute, 0, 0);
                 return result;
             }
@@ -345,7 +324,7 @@ export class DiningEventService {
                 const minute = parseInt(minuteStr);
                 
                 if (hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59) {
-                    const result = new Date(mstBaseDate);
+                    const result = new Date(baseDate);
                     result.setHours(hour, minute, 0, 0);
                     return result;
                 }
@@ -354,6 +333,75 @@ export class DiningEventService {
             return null;
         } catch (error) {
             return null;
+        }
+    }
+
+    // Validate if time is within meal period
+    isValidMealTime(mealType: 'breakfast' | 'lunch' | 'light_lunch' | 'dinner' | 'brunch', timeDate: Date): boolean {
+        const hour = timeDate.getHours();
+        const minute = timeDate.getMinutes();
+        const dayOfWeek = timeDate.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+        const timeInMinutes = hour * 60 + minute;
+
+        switch (mealType) {
+            case 'breakfast':
+                // Mon-Fri 7:00AM - 11:00AM
+                if (dayOfWeek >= 1 && dayOfWeek <= 5) {
+                    return timeInMinutes >= 7 * 60 && timeInMinutes < 11 * 60;
+                }
+                return false;
+
+            case 'brunch':
+                // Sat-Sun 10:00AM - 2:00PM
+                if (dayOfWeek === 0 || dayOfWeek === 6) {
+                    return timeInMinutes >= 10 * 60 && timeInMinutes < 14 * 60;
+                }
+                return false;
+
+            case 'lunch':
+                // Mon-Fri 11:00AM - 2:00PM
+                if (dayOfWeek >= 1 && dayOfWeek <= 5) {
+                    return timeInMinutes >= 11 * 60 && timeInMinutes < 14 * 60;
+                }
+                return false;
+
+            case 'light_lunch':
+                // Mon-Sun 2:00PM - 4:30PM
+                return timeInMinutes >= 14 * 60 && timeInMinutes < 16.5 * 60;
+
+            case 'dinner':
+                if (dayOfWeek >= 1 && dayOfWeek <= 4) {
+                    // Mon-Thu 4:30PM - 9:00PM
+                    return timeInMinutes >= 16.5 * 60 && timeInMinutes < 21 * 60;
+                } else if (dayOfWeek === 5 || dayOfWeek === 6) {
+                    // Fri-Sat 4:30PM - 7:00PM
+                    return timeInMinutes >= 16.5 * 60 && timeInMinutes < 19 * 60;
+                } else if (dayOfWeek === 0) {
+                    // Sun 4:30PM - 8:00PM
+                    return timeInMinutes >= 16.5 * 60 && timeInMinutes < 20 * 60;
+                }
+                return false;
+
+            default:
+                return false;
+        }
+    }
+
+    // Get meal time validation error message
+    getMealTimeErrorMessage(mealType: 'breakfast' | 'lunch' | 'light_lunch' | 'dinner' | 'brunch'): string {
+        switch (mealType) {
+            case 'breakfast':
+                return 'Breakfast is only available Monday-Friday from 7:00 AM to 11:00 AM.';
+            case 'brunch':
+                return 'Brunch is only available Saturday-Sunday from 10:00 AM to 2:00 PM.';
+            case 'lunch':
+                return 'Lunch is only available Monday-Friday from 11:00 AM to 2:00 PM.';
+            case 'light_lunch':
+                return 'Light lunch is available Monday-Sunday from 2:00 PM to 4:30 PM.';
+            case 'dinner':
+                return 'Dinner is available Monday-Thursday from 4:30 PM to 9:00 PM, Friday-Saturday from 4:30 PM to 7:00 PM, and Sunday from 4:30 PM to 8:00 PM.';
+            default:
+                return 'Invalid meal type.';
         }
     }
 }

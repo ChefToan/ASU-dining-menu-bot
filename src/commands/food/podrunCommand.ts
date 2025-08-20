@@ -12,51 +12,70 @@ import {
     User
 } from 'discord.js';
 import { podrunService } from '../../services/podrunService';
+import { diningEventService } from '../../services/diningEventService';
 
 
 export const data = new SlashCommandBuilder()
     .setName('podrun')
     .setDescription('Organize a podrun to the pod!')
-    .addIntegerOption(option =>
-        option.setName('minutes')
-            .setDescription('Minutes from now until the podrun starts (1-120)')
+    .addStringOption(option =>
+        option.setName('time')
+            .setDescription('What time for the podrun (e.g., "6:30pm", "18:00", "19:15")')
             .setRequired(true)
-            .setMinValue(1)
-            .setMaxValue(120)
     );
 
 export async function execute(interaction: CommandInteraction) {
     try {
-        const minutes = interaction.options.get('minutes')?.value as number;
+        const timeInput = interaction.options.get('time')?.value as string;
         const creator = interaction.user;
         const channelId = interaction.channelId!;
         const guildId = interaction.guildId!;
 
-        // Check if there's already an active podrun in this channel
-        const existingPodrunKey = `${guildId}-${channelId}`;
-        if (await podrunService.podrunExists(existingPodrunKey)) {
+        // Parse the time
+        const currentDate = new Date();
+        const runTime = diningEventService.parseTime(timeInput, currentDate);
+        
+        if (!runTime) {
             await interaction.reply({
-                content: 'There\'s already an active podrun in this channel! Wait for it to finish before starting a new one.',
+                content: 'Invalid time format. Please use formats like "6:30pm", "18:00", or "19:15".',
                 ephemeral: true
             });
             return;
         }
 
-        // Calculate the run time using user's local timezone
-        const startTime = new Date();
-        const runTime = new Date(startTime.getTime() + minutes * 60000);
+        // If the time is in the past today, assume it's for tomorrow
+        if (runTime <= currentDate) {
+            runTime.setDate(runTime.getDate() + 1);
+        }
 
-        // Get user's timezone offset (Discord doesn't provide this directly, so we'll use a smart default)
-        // We'll use the server's timezone but format it in a user-friendly way
+        // Check if there's already an active podrun in this channel for the same day
+        const existingPodrunKey = `${guildId}-${channelId}-${runTime.toDateString()}`;
+        if (await podrunService.podrunExists(existingPodrunKey)) {
+            await interaction.reply({
+                content: 'There\'s already an active podrun in this channel for that day! Wait for it to finish before starting a new one.',
+                ephemeral: true
+            });
+            return;
+        }
+
+        // Calculate the run time and start time
+        const startTime = new Date();
+        
+        // Format the time for display
         const timeString = runTime.toLocaleTimeString('en-US', {
             hour: 'numeric',
             minute: '2-digit',
-            hour12: true,
-            timeZone: 'America/Phoenix' // Arizona time (ASU is in Arizona)
+            hour12: true
         }).toLowerCase();
 
+        const dateString = runTime.toLocaleDateString('en-US', {
+            weekday: 'short',
+            month: 'short',
+            day: 'numeric'
+        });
+
         // Create the embed message
-        const embedDescription = `**Podrun at ${timeString}**\n\nReact with a thumbs up to this message, if you would like to podrun`;
+        const embedDescription = `**Podrun on ${dateString} at ${timeString}**\n\nReact with a thumbs up to this message, if you would like to podrun`;
 
         // Create the initial embed
         const embed = new EmbedBuilder()
@@ -121,10 +140,13 @@ export async function execute(interaction: CommandInteraction) {
             return;
         }
 
+        // Calculate timeout duration until the podrun time
+        const timeoutDuration = runTime.getTime() - startTime.getTime();
+
         // Create collector for button interactions
         const collector = message.createMessageComponentCollector({
             componentType: ComponentType.Button,
-            time: minutes * 60000
+            time: timeoutDuration
         });
 
         collector.on('collect', async (buttonInteraction: ButtonInteraction) => {
@@ -248,7 +270,7 @@ export async function execute(interaction: CommandInteraction) {
 
             // Stop the collector
             collector.stop();
-        }, minutes * 60000);
+        }, timeoutDuration);
 
         // Handle collector end (in case it ends before the timeout)
         collector.on('end', () => {

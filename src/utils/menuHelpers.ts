@@ -7,29 +7,41 @@ import {
 } from 'discord.js';
 import { MenuPeriod } from '../commands/type/menu';
 import { MENU_CONFIG } from './config';
-import { formatTimeRange } from './api';
+
+// Helper function to get standard dining hours for meal periods
+export function getStandardMealHours(periodName: string): string {
+    const normalizedName = periodName.toLowerCase();
+    
+    if (normalizedName.includes('breakfast')) {
+        return '(7:00 AM - 11:00 AM)';
+    } else if (normalizedName.includes('brunch')) {
+        return '(10:00 AM - 2:00 PM)';
+    } else if (normalizedName.includes('lunch') && !normalizedName.includes('light')) {
+        return '(11:00 AM - 2:00 PM)';
+    } else if (normalizedName.includes('light lunch') || normalizedName.includes('light-lunch')) {
+        return '(2:00 PM - 4:30 PM)';
+    } else if (normalizedName.includes('dinner')) {
+        return '(4:30 PM - 9:00 PM)';
+    } else if (normalizedName.includes('late night')) {
+        return '(Currently Closed)';
+    } else {
+        // For any unrecognized meal periods, show general availability
+        return '(See dining hall for hours)';
+    }
+}
 
 // Define a Period interface for use in our code
 export interface Period {
     id: string;
     name: string;
-    timeRange: string;
-    hasValidTime: boolean;
 }
 
 // Helper function to parse periods from API response
 export function parsePeriods(apiPeriods: MenuPeriod[]): Period[] {
     return apiPeriods.map((period: MenuPeriod) => {
-        const { timeRange, hasValidTime } = formatTimeRange(
-            period.UtcMealPeriodStartTime,
-            period.UtcMealPeriodEndTime
-        );
-
         return {
             id: period.PeriodId,
-            name: period.Name,
-            timeRange,
-            hasValidTime
+            name: period.Name
         };
     });
 }
@@ -179,10 +191,8 @@ export function createStationSelectionEmbed(
     formattedDisplayDate: string, 
     period: Period
 ): EmbedBuilder {
-    let description = `Here are the menu options for **${period.name}** at **${displayName}**`;
-    if (period.hasValidTime) {
-        description += ` from **${period.timeRange}**`;
-    }
+    const standardHours = getStandardMealHours(period.name);
+    let description = `Here are the menu options for **${period.name}** ${standardHours} at **${displayName}**`;
     description += `\n\nPlease select a station to view available items.`;
 
     return new EmbedBuilder()
@@ -199,10 +209,8 @@ export function createStationMenuEmbed(
     stationName: string,
     stationContent: string
 ): EmbedBuilder {
-    let description = `Here are the menu options for **${period.name}** at **${displayName}**`;
-    if (period.hasValidTime) {
-        description += ` from **${period.timeRange}**`;
-    }
+    const standardHours = getStandardMealHours(period.name);
+    let description = `Here are the menu options for **${period.name}** ${standardHours} at **${displayName}**`;
     description += `\n\n**${stationName}**\n${stationContent}`;
 
     return new EmbedBuilder()

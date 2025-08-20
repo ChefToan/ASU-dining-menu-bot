@@ -44,59 +44,6 @@ export function getStationNames(menuData: MenuResponse): Map<string, string> {
     return stationNames;
 }
 
-// Time parsing utility function
-export function parseTime(timeStr: string | undefined): { timeString: string, isValid: boolean } {
-    // Handle undefined or empty time strings
-    if (!timeStr) {
-        return { timeString: "Time unavailable", isValid: false };
-    }
-
-    try {
-        // Format is like "2025-04-22 13:00:00Z"
-        const parts = timeStr.split(' ');
-        if (parts.length < 2) {
-            return { timeString: "Invalid format", isValid: false };
-        }
-
-        const timeParts = parts[1].split(':');
-        if (timeParts.length < 2) {
-            return { timeString: "Invalid time format", isValid: false };
-        }
-
-        let hours = parseInt(timeParts[0], 10);
-        const minutes = parseInt(timeParts[1], 10);
-
-        if (isNaN(hours) || isNaN(minutes)) {
-            return { timeString: "Invalid time", isValid: false };
-        }
-
-        // Convert from UTC to MST (UTC-7) - Arizona time
-        hours = (hours - 7 + 24) % 24;
-
-        // Format the time string with AM/PM
-        const period = hours >= 12 ? 'PM' : 'AM';
-        hours = hours % 12;
-        hours = hours === 0 ? 12 : hours; // Convert 0 to 12 for 12-hour format
-
-        return {
-            timeString: `${hours}:${minutes.toString().padStart(2, '0')} ${period}`,
-            isValid: true
-        };
-    } catch (error) {
-        console.error("Error parsing time:", timeStr, error);
-        return { timeString: "Time processing error", isValid: false };
-    }
-}
-
-// Format time range utility
-export function formatTimeRange(startTime: string | undefined, endTime: string | undefined): { timeRange: string, hasValidTime: boolean } {
-    const startTimeResult = parseTime(startTime);
-    const endTimeResult = parseTime(endTime);
-    const timeRange = `${startTimeResult.timeString} to ${endTimeResult.timeString}`;
-    const hasValidTime = startTimeResult.isValid && endTimeResult.isValid;
-    
-    return { timeRange, hasValidTime };
-}
 
 // Clear the cache (for testing or forced refreshes)
 export async function clearMenuCache(): Promise<void> {

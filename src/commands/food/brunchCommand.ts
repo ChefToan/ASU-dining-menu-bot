@@ -15,8 +15,8 @@ import { diningEventService } from '../../services/diningEventService';
 import { DINING_HALLS } from '../../utils/config';
 
 export const data = new SlashCommandBuilder()
-    .setName('lunch')
-    .setDescription('Organize a lunch meetup at a dining hall!')
+    .setName('brunch')
+    .setDescription('Organize a brunch meetup at a dining hall!')
     .addStringOption(option =>
         option.setName('dining_hall')
             .setDescription('Which dining hall to meet at')
@@ -32,7 +32,7 @@ export const data = new SlashCommandBuilder()
     )
     .addStringOption(option =>
         option.setName('time')
-            .setDescription('What time for lunch (e.g., "12:30pm", "1:00", "13:15")')
+            .setDescription('What time for brunch (e.g., "11:30am", "12:00", "10:30")')
             .setRequired(true)
     );
 
@@ -60,16 +60,16 @@ export async function execute(interaction: CommandInteraction) {
         
         if (!mealTime) {
             await interaction.reply({
-                content: 'Invalid time format. Please use formats like "12:30pm", "1:00", or "13:15".',
+                content: 'Invalid time format. Please use formats like "11:30am", "12:00", or "10:30".',
                 ephemeral: true
             });
             return;
         }
 
-        // Validate lunch time range
-        if (!diningEventService.isValidMealTime('lunch', mealTime)) {
+        // Validate brunch time range
+        if (!diningEventService.isValidMealTime('brunch', mealTime)) {
             await interaction.reply({
-                content: diningEventService.getMealTimeErrorMessage('lunch'),
+                content: diningEventService.getMealTimeErrorMessage('brunch'),
                 ephemeral: true
             });
             return;
@@ -80,11 +80,11 @@ export async function execute(interaction: CommandInteraction) {
             mealTime.setDate(mealTime.getDate() + 1);
         }
 
-        // Check if there's already an active lunch event in this channel for the same day
-        const eventKey = `${guildId}-${channelId}-lunch-${mealTime.toDateString()}`;
+        // Check if there's already an active brunch event in this channel for the same day
+        const eventKey = `${guildId}-${channelId}-brunch-${mealTime.toDateString()}`;
         if (await diningEventService.diningEventExists(eventKey)) {
             await interaction.reply({
-                content: 'There\'s already an active lunch event in this channel for that day! Wait for it to finish before starting a new one.',
+                content: 'There\'s already an active brunch event in this channel for that day! Wait for it to finish before starting a new one.',
                 ephemeral: true
             });
             return;
@@ -104,15 +104,15 @@ export async function execute(interaction: CommandInteraction) {
         });
 
         // Create the embed message
-        const embedDescription = `**Lunch at ${diningHall.name} on ${dateString} at ${timeString}**\n\nJoin us for lunch! React to let us know if you're coming.`;
+        const embedDescription = `**Brunch at ${diningHall.name} on ${dateString} at ${timeString}**\n\nJoin us for brunch! React to let us know if you're coming.`;
 
         // Create the initial embed
         const embed = new EmbedBuilder()
-            .setColor(Colors.Gold)
+            .setColor(Colors.DarkOrange)
             .setDescription(embedDescription)
             .addFields(
                 {
-                    name: '🍽️ Attending',
+                    name: '🥐 Attending',
                     value: `<@${creator.id}>`,
                     inline: true
                 },
@@ -127,17 +127,17 @@ export async function execute(interaction: CommandInteraction) {
         const row = new ActionRowBuilder<ButtonBuilder>()
             .addComponents(
                 new ButtonBuilder()
-                    .setCustomId('lunch_yes')
-                    .setEmoji('🍽️')
+                    .setCustomId('brunch_yes')
+                    .setEmoji('🥐')
                     .setLabel('I\'m In!')
                     .setStyle(ButtonStyle.Primary),
                 new ButtonBuilder()
-                    .setCustomId('lunch_no')
+                    .setCustomId('brunch_no')
                     .setEmoji('❌')
                     .setLabel('Can\'t Make It')
                     .setStyle(ButtonStyle.Secondary),
                 new ButtonBuilder()
-                    .setCustomId('lunch_cancel')
+                    .setCustomId('brunch_cancel')
                     .setLabel('Cancel Event')
                     .setStyle(ButtonStyle.Danger)
             );
@@ -157,7 +157,7 @@ export async function execute(interaction: CommandInteraction) {
             creator,
             guildId,
             channelId,
-            'lunch',
+            'brunch',
             diningHallOption,
             startTime,
             mealTime,
@@ -166,7 +166,7 @@ export async function execute(interaction: CommandInteraction) {
 
         if (!eventId) {
             await interaction.editReply({
-                content: 'Failed to create lunch event. Please try again.',
+                content: 'Failed to create brunch event. Please try again.',
                 components: []
             });
             return;
@@ -185,17 +185,17 @@ export async function execute(interaction: CommandInteraction) {
             const userId = buttonInteraction.user.id;
             const user = buttonInteraction.user;
 
-            if (buttonInteraction.customId === 'lunch_yes') {
+            if (buttonInteraction.customId === 'brunch_yes') {
                 await diningEventService.addParticipant(eventId, userId, user.username, 'attendee');
-            } else if (buttonInteraction.customId === 'lunch_no') {
+            } else if (buttonInteraction.customId === 'brunch_no') {
                 await diningEventService.addParticipant(eventId, userId, user.username, 'declined');
-            } else if (buttonInteraction.customId === 'lunch_cancel') {
+            } else if (buttonInteraction.customId === 'brunch_cancel') {
                 // Only the creator can cancel
                 if (userId === creator.id) {
                     await diningEventService.cancelDiningEvent(eventKey);
 
                     await buttonInteraction.reply({
-                        content: 'Lunch event has been cancelled.',
+                        content: 'Brunch event has been cancelled.',
                         ephemeral: true
                     });
 
@@ -208,7 +208,7 @@ export async function execute(interaction: CommandInteraction) {
                     return;
                 } else {
                     await buttonInteraction.reply({
-                        content: 'You cannot cancel this lunch event.',
+                        content: 'You cannot cancel this brunch event.',
                         ephemeral: true
                     });
                     return;
@@ -231,7 +231,7 @@ export async function execute(interaction: CommandInteraction) {
             const updatedEmbed = EmbedBuilder.from(embed)
                 .setFields(
                     {
-                        name: '🍽️ Attending',
+                        name: '🥐 Attending',
                         value: attendeesText || '\u200B',
                         inline: true
                     },
@@ -248,7 +248,7 @@ export async function execute(interaction: CommandInteraction) {
             });
         });
 
-        // Set timeout for when the lunch time arrives
+        // Set timeout for when the brunch time arrives
         diningEventService.setTimeout(eventKey, async () => {
             // Get current event data to check if cancelled
             const eventData = await diningEventService.getDiningEvent(eventKey);
@@ -262,19 +262,19 @@ export async function execute(interaction: CommandInteraction) {
             const disabledRow = new ActionRowBuilder<ButtonBuilder>()
                 .addComponents(
                     new ButtonBuilder()
-                        .setCustomId('lunch_yes')
-                        .setEmoji('🍽️')
+                        .setCustomId('brunch_yes')
+                        .setEmoji('🥐')
                         .setLabel('I\'m In!')
                         .setStyle(ButtonStyle.Primary)
                         .setDisabled(true),
                     new ButtonBuilder()
-                        .setCustomId('lunch_no')
+                        .setCustomId('brunch_no')
                         .setEmoji('❌')
                         .setLabel('Can\'t Make It')
                         .setStyle(ButtonStyle.Secondary)
                         .setDisabled(true),
                     new ButtonBuilder()
-                        .setCustomId('lunch_cancel')
+                        .setCustomId('brunch_cancel')
                         .setLabel('Cancel Event')
                         .setStyle(ButtonStyle.Danger)
                         .setDisabled(true)
@@ -290,11 +290,11 @@ export async function execute(interaction: CommandInteraction) {
 
             if (eventData.attendees.size === 1) {
                 // Only the creator, send cancellation message
-                await channel.send(`No one else wanted to join <@${creator.id}> for lunch at ${diningHall.name}. Event cancelled! 🥪`);
+                await channel.send(`No one else wanted to join <@${creator.id}> for brunch at ${diningHall.name}. Event cancelled! 🧇`);
             } else {
-                // Multiple people joined, send lunch time message
+                // Multiple people joined, send brunch time message
                 const attendeesList = Array.from(eventData.attendees.values()).map(u => `<@${u.id}>`).join(' ');
-                await channel.send(`🍽️ Lunch time at ${diningHall.name}! ${attendeesList} - enjoy your meal! 🥪`);
+                await channel.send(`🥐 Brunch time at ${diningHall.name}! ${attendeesList} - enjoy your meal! 🧇`);
             }
 
             // Mark event as completed
@@ -310,17 +310,17 @@ export async function execute(interaction: CommandInteraction) {
         });
 
     } catch (error) {
-        console.error('Error executing lunch command:', error);
+        console.error('Error executing brunch command:', error);
 
         try {
             if (interaction.deferred || interaction.replied) {
                 await interaction.followUp({
-                    content: 'There was an error organizing the lunch event. Please try again!',
+                    content: 'There was an error organizing the brunch event. Please try again!',
                     ephemeral: true
                 });
             } else {
                 await interaction.reply({
-                    content: 'There was an error organizing the lunch event. Please try again!',
+                    content: 'There was an error organizing the brunch event. Please try again!',
                     ephemeral: true
                 });
             }
