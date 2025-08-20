@@ -100,7 +100,7 @@ CREATE TABLE cache_entries (
 -- Dining events table to track meal meetups
 CREATE TABLE dining_events (
     id SERIAL PRIMARY KEY,
-    event_key VARCHAR(50) NOT NULL UNIQUE, -- guild_id-channel_id-meal_type format
+    event_key VARCHAR(150) NOT NULL UNIQUE, -- guild_id-channel_id-meal_type-date format
     creator_id VARCHAR(20) NOT NULL, -- Discord user ID
     guild_id VARCHAR(20) NOT NULL,
     channel_id VARCHAR(20) NOT NULL,

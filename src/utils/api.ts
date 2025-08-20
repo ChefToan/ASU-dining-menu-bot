@@ -70,8 +70,8 @@ export function parseTime(timeStr: string | undefined): { timeString: string, is
             return { timeString: "Invalid time", isValid: false };
         }
 
-        // Convert from UTC to Mountain Time (UTC-6)
-        hours = (hours - 6 + 24) % 24;
+        // Convert from UTC to MST (UTC-7) - Arizona time
+        hours = (hours - 7 + 24) % 24;
 
         // Format the time string with AM/PM
         const period = hours >= 12 ? 'PM' : 'AM';

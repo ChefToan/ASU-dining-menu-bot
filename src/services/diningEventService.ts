@@ -248,10 +248,11 @@ export class DiningEventService {
 
     async cleanupExpiredEvents(eventKey?: string): Promise<boolean> {
         try {
+            const nowMST = this.getMSTDate();
             let query = db.getClient()
                 .from('dining_events')
                 .update({ status: 'completed' })
-                .lt('meal_time', new Date().toISOString())
+                .lt('meal_time', nowMST.toISOString())
                 .eq('status', 'active');
 
             // If specific event key provided, only clean up that one
@@ -295,10 +296,31 @@ export class DiningEventService {
         }
     }
 
-    // Helper method to parse time from string (12hr or 24hr format)
+    // Helper method to get current MST time
+    private getMSTDate(): Date {
+        const now = new Date();
+        // Convert to MST (UTC-7)
+        const mstOffset = -7 * 60; // MST is UTC-7
+        const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+        const mst = new Date(utc + (mstOffset * 60000));
+        return mst;
+    }
+
+    // Helper method to convert any date to MST
+    private toMST(date: Date): Date {
+        const mstOffset = -7 * 60; // MST is UTC-7
+        const utc = date.getTime() + (date.getTimezoneOffset() * 60000);
+        const mst = new Date(utc + (mstOffset * 60000));
+        return mst;
+    }
+
+    // Helper method to parse time from string (12hr or 24hr format) in MST
     parseTime(timeStr: string, baseDate: Date = new Date()): Date | null {
         try {
             const time = timeStr.toLowerCase().trim();
+            
+            // Use MST base date
+            const mstBaseDate = this.toMST(baseDate);
             
             // Handle 12-hour format (e.g., "2:30pm", "11:00 am")
             const twelveHourMatch = time.match(/^(\d{1,2}):?(\d{0,2})\s*(am|pm)$/);
@@ -310,7 +332,7 @@ export class DiningEventService {
                 if (period === 'pm' && hour !== 12) hour += 12;
                 if (period === 'am' && hour === 12) hour = 0;
                 
-                const result = new Date(baseDate);
+                const result = new Date(mstBaseDate);
                 result.setHours(hour, minute, 0, 0);
                 return result;
             }
@@ -323,7 +345,7 @@ export class DiningEventService {
                 const minute = parseInt(minuteStr);
                 
                 if (hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59) {
-                    const result = new Date(baseDate);
+                    const result = new Date(mstBaseDate);
                     result.setHours(hour, minute, 0, 0);
                     return result;
                 }
