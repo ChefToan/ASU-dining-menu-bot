@@ -1,48 +1,9 @@
-import axios from 'axios';
 import { MenuApiParams, MenuResponse, MenuItem } from '../commands/type/menu';
-import cache from './cache';
+import { menuService } from '../services/menuService';
 
-const API_URL = 'https://asu.campusdish.com/api/menu/GetMenus';
-
+// Re-export for backward compatibility
 export async function fetchMenu(params: MenuApiParams): Promise<MenuResponse> {
-    try {
-        // Create a new object for query parameters
-        const queryParams: Record<string, string> = {};
-
-        // Only add non-empty parameters
-        Object.entries(params).forEach(([key, value]) => {
-            if (value !== "") {
-                queryParams[key] = value;
-            }
-        });
-
-        // Generate a cache key from the query parameters
-        const cacheKey = cache.generateKey(queryParams);
-
-        // Check if the data is in the cache
-        const cachedData = cache.get<MenuResponse>(cacheKey);
-        if (cachedData) {
-            console.log(`Cache hit for ${cacheKey}`);
-            return cachedData;
-        }
-
-        console.log(`Cache miss for ${cacheKey}, fetching from API...`);
-        // If not in cache, fetch from API
-        const response = await axios.get(API_URL, { params: queryParams });
-
-        // Validate response before caching
-        if (response.data && response.data.Menu) {
-            // Store in cache
-            cache.set(cacheKey, response.data);
-            return response.data;
-        } else {
-            console.warn("Invalid menu data format received from API:", response.data);
-            return response.data; // Return anyway, but don't cache
-        }
-    } catch (error) {
-        console.error('Error fetching menu:', error);
-        throw error;
-    }
+    return await menuService.fetchMenu(params);
 }
 
 // Organize menu items by station
@@ -138,14 +99,14 @@ export function formatTimeRange(startTime: string | undefined, endTime: string |
 }
 
 // Clear the cache (for testing or forced refreshes)
-export function clearMenuCache(): void {
-    cache.clear();
+export async function clearMenuCache(): Promise<void> {
+    const { menuService } = await import('../services/menuService');
+    await menuService.clearCache();
     console.log('Menu cache cleared');
 }
 
 // Get cache stats (for debugging)
-export function getCacheStats(): { size: number } {
-    return {
-        size: cache.size()
-    };
+export async function getCacheStats(): Promise<{ total: number, expired: number }> {
+    const { menuService } = await import('../services/menuService');
+    return await menuService.getCacheStats();
 }

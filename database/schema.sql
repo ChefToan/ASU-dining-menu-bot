@@ -97,6 +97,33 @@ CREATE TABLE cache_entries (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Dining events table to track meal meetups
+CREATE TABLE dining_events (
+    id SERIAL PRIMARY KEY,
+    event_key VARCHAR(50) NOT NULL UNIQUE, -- guild_id-channel_id-meal_type format
+    creator_id VARCHAR(20) NOT NULL, -- Discord user ID
+    guild_id VARCHAR(20) NOT NULL,
+    channel_id VARCHAR(20) NOT NULL,
+    message_id VARCHAR(20), -- Discord message ID
+    meal_type VARCHAR(15) NOT NULL, -- breakfast, lunch, light_lunch, dinner
+    dining_hall VARCHAR(30) NOT NULL, -- barrett, manzi, hassay, tooker, mu, hida
+    start_time TIMESTAMPTZ NOT NULL,
+    meal_time TIMESTAMPTZ NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'active', -- active, completed, cancelled
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Dining event participants table (many-to-many relationship)
+CREATE TABLE dining_event_participants (
+    id SERIAL PRIMARY KEY,
+    dining_event_id INTEGER NOT NULL REFERENCES dining_events(id) ON DELETE CASCADE,
+    user_id VARCHAR(20) NOT NULL,
+    username VARCHAR(32),
+    participant_type VARCHAR(10) NOT NULL, -- 'attendee' or 'declined'
+    joined_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- Indexes for better performance
 CREATE INDEX idx_users_user_id ON users(user_id);
 CREATE INDEX idx_podruns_podrun_key ON podruns(podrun_key);
@@ -104,6 +131,12 @@ CREATE INDEX idx_podruns_status ON podruns(status);
 CREATE INDEX idx_podruns_guild_channel ON podruns(guild_id, channel_id);
 CREATE INDEX idx_podrun_participants_podrun_id ON podrun_participants(podrun_id);
 CREATE INDEX idx_podrun_participants_user_id ON podrun_participants(user_id);
+CREATE INDEX idx_dining_events_event_key ON dining_events(event_key);
+CREATE INDEX idx_dining_events_status ON dining_events(status);
+CREATE INDEX idx_dining_events_guild_channel ON dining_events(guild_id, channel_id);
+CREATE INDEX idx_dining_events_meal_time ON dining_events(meal_time);
+CREATE INDEX idx_dining_event_participants_event_id ON dining_event_participants(dining_event_id);
+CREATE INDEX idx_dining_event_participants_user_id ON dining_event_participants(user_id);
 CREATE INDEX idx_roulette_games_user_id ON roulette_games(user_id);
 CREATE INDEX idx_roulette_games_played_at ON roulette_games(played_at);
 CREATE INDEX idx_work_sessions_user_id ON work_sessions(user_id);
@@ -131,6 +164,10 @@ CREATE TRIGGER update_users_updated_at
 
 CREATE TRIGGER update_podruns_updated_at 
     BEFORE UPDATE ON podruns 
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_dining_events_updated_at 
+    BEFORE UPDATE ON dining_events 
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- Function to clean expired cache entries
@@ -179,3 +216,27 @@ LEFT JOIN podrun_participants pp ON p.id = pp.podrun_id
 WHERE p.status = 'active'
 GROUP BY p.id, p.podrun_key, p.creator_id, p.guild_id, p.channel_id, p.message_id, p.start_time, p.run_time, p.status, p.created_at, p.updated_at
 ORDER BY p.created_at DESC;
+
+-- View for active dining events with participant counts
+CREATE VIEW active_dining_events_summary AS
+SELECT 
+    de.id,
+    de.event_key,
+    de.creator_id,
+    de.guild_id,
+    de.channel_id,
+    de.message_id,
+    de.meal_type,
+    de.dining_hall,
+    de.start_time,
+    de.meal_time,
+    de.status,
+    COUNT(CASE WHEN dep.participant_type = 'attendee' THEN 1 END) as attendee_count,
+    COUNT(CASE WHEN dep.participant_type = 'declined' THEN 1 END) as declined_count,
+    de.created_at,
+    de.updated_at
+FROM dining_events de
+LEFT JOIN dining_event_participants dep ON de.id = dep.dining_event_id
+WHERE de.status = 'active'
+GROUP BY de.id, de.event_key, de.creator_id, de.guild_id, de.channel_id, de.message_id, de.meal_type, de.dining_hall, de.start_time, de.meal_time, de.status, de.created_at, de.updated_at
+ORDER BY de.created_at DESC;

@@ -4,9 +4,9 @@ import {
     ComponentType,
     ButtonInteraction
 } from 'discord.js';
-import { fetchMenu, organizeMenuByStation, getStationNames } from '../utils/api';
-import { DINING_HALLS, MENU_CONFIG } from '../utils/config';
-import { MenuResponse, MenuItem } from './type/menu';
+import { fetchMenu, organizeMenuByStation, getStationNames } from '../../utils/api';
+import { DINING_HALLS, MENU_CONFIG } from '../../utils/config';
+import { MenuResponse, MenuItem } from '../type/menu';
 import {
     Period,
     parsePeriods,
@@ -20,7 +20,7 @@ import {
     createMainEmbed,
     createStationSelectionEmbed,
     createStationMenuEmbed
-} from '../utils/menuHelpers';
+} from '../../utils/menuHelpers';
 
 export const data = new SlashCommandBuilder()
     .setName('menu')

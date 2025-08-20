@@ -1,16 +1,22 @@
 import { Client, Events, GatewayIntentBits, Collection } from 'discord.js';
 import { config } from 'dotenv';
-import * as podrunCommand from './commands/podrunCommand';
+import * as podrunCommand from './commands/food/podrunCommand';
 import * as workCommand from './commands/roulette/workCommand';
 import * as rouletteCommand from './commands/roulette/rouletteCommand';
 import * as rouletteOddsCommand from './commands/roulette/rouletteOddsCommand';
 import * as balanceCommand from './commands/roulette/balanceCommand';
 import * as leaderboardCommand from './commands/roulette/leaderboardCommand';
-import * as payCommand from './commands/payCommand';
-import * as menuCommand from './commands/menuCommand';
+import * as payCommand from './commands/roulette/payCommand';
+import * as menuCommand from './commands/food/menuCommand';
+import * as breakfastCommand from './commands/food/breakfastCommand';
+import * as lunchCommand from './commands/food/lunchCommand';
+import * as lightLunchCommand from './commands/food/lightLunchCommand';
+import * as dinnerCommand from './commands/food/dinnerCommand';
 import { REST, Routes } from 'discord.js';
 import { db } from './services/database';
 import { podrunService } from './services/podrunService';
+import { diningEventService } from './services/diningEventService';
+import { menuScheduler } from './services/menuScheduler';
 
 // Load environment variables
 config();
@@ -42,6 +48,10 @@ client.commands.set(balanceCommand.data.name, balanceCommand);
 client.commands.set(leaderboardCommand.data.name, leaderboardCommand);
 client.commands.set(payCommand.data.name, payCommand);
 client.commands.set(menuCommand.data.name, menuCommand);
+client.commands.set(breakfastCommand.data.name, breakfastCommand);
+client.commands.set(lunchCommand.data.name, lunchCommand);
+client.commands.set(lightLunchCommand.data.name, lightLunchCommand);
+client.commands.set(dinnerCommand.data.name, dinnerCommand);
 
 
 // When the client is ready, run this code
@@ -61,6 +71,16 @@ client.once(Events.ClientReady, async (readyClient) => {
     console.log('Cleaning up expired podruns...');
     await podrunService.cleanupExpiredPodruns();
     console.log('✅ Expired podruns cleaned up');
+
+    // Clean up any expired dining events on startup
+    console.log('Cleaning up expired dining events...');
+    await diningEventService.cleanupExpiredEvents();
+    console.log('✅ Expired dining events cleaned up');
+
+    // Start menu refresh scheduler
+    console.log('Starting menu cache scheduler...');
+    menuScheduler.start();
+    console.log('✅ Menu scheduler started - menus will refresh every 6 hours');
 
 });
 
@@ -103,7 +123,11 @@ const registerCommands = async () => {
         balanceCommand.data.toJSON(),
         leaderboardCommand.data.toJSON(),
         payCommand.data.toJSON(),
-        menuCommand.data.toJSON()
+        menuCommand.data.toJSON(),
+        breakfastCommand.data.toJSON(),
+        lunchCommand.data.toJSON(),
+        lightLunchCommand.data.toJSON(),
+        dinnerCommand.data.toJSON()
     ];
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN!);
 
@@ -165,6 +189,9 @@ async function gracefulShutdown(signal: string) {
         if (podrunCommand.cleanup) {
             podrunCommand.cleanup();
         }
+
+        // Stop menu scheduler
+        menuScheduler.stop();
 
         // Set a timeout to force exit after 3 seconds
         const forceExitTimeout = setTimeout(() => {

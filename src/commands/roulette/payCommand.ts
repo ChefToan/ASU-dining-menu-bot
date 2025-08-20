@@ -10,8 +10,8 @@ import {
     ButtonInteraction,
     User
 } from 'discord.js';
-import { userService } from '../services/userService';
-import { db } from '../services/database';
+import { userService } from '../../services/userService';
+import { db } from '../../services/database';
 
 export const data = new SlashCommandBuilder()
     .setName('pay')

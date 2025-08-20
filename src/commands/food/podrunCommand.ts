@@ -11,7 +11,7 @@ import {
     TextChannel,
     User
 } from 'discord.js';
-import { podrunService } from '../services/podrunService';
+import { podrunService } from '../../services/podrunService';
 
 
 export const data = new SlashCommandBuilder()
