@@ -169,15 +169,16 @@ export async function execute(interaction: CommandInteraction) {
         // Calculate timeout duration until the podrun time
         const timeoutDuration = runTime.getTime() - startTime.getTime();
 
-        // Create collector for button interactions
+        // Create collector for button interactions (no automatic timeout - we handle it manually)
         const collector = message.createMessageComponentCollector({
-            componentType: ComponentType.Button,
-            time: timeoutDuration
+            componentType: ComponentType.Button
         });
 
         collector.on('collect', async (buttonInteraction: ButtonInteraction) => {
-            const userId = buttonInteraction.user.id;
-            const user = buttonInteraction.user;
+            try {
+                console.log(`[Podrun] Collector received button interaction: ${buttonInteraction.customId}`);
+                const userId = buttonInteraction.user.id;
+                const user = buttonInteraction.user;
 
             if (buttonInteraction.customId === 'podrun_yes') {
                 await podrunService.addParticipant(podrunId, userId, user.username, 'podrunner');
@@ -186,20 +187,39 @@ export async function execute(interaction: CommandInteraction) {
             } else if (buttonInteraction.customId === 'podrun_cancel') {
                 // Only the creator can cancel
                 if (userId === creator.id) {
-                    await podrunService.cancelPodrun(existingPodrunKey);
+                    try {
+                        // Cancel podrun in database
+                        await podrunService.cancelPodrun(existingPodrunKey);
 
-                    await buttonInteraction.reply({
-                        content: 'Podrun has been cancelled.',
-                        ephemeral: true
-                    });
+                        // Update the message to show cancellation, then delete it
+                        await buttonInteraction.update({
+                            content: 'Podrun has been cancelled.',
+                            embeds: [],
+                            components: []
+                        });
 
-                    // Stop the collector
-                    collector.stop('cancelled');
+                        // Stop the collector (this will trigger the cleanup and clear the timeout)
+                        collector.stop('cancelled_by_creator');
 
-                    // Delete the original message
-                    await message.delete();
+                        // Delete the message after a short delay
+                        setTimeout(async () => {
+                            try {
+                                await buttonInteraction.message.delete();
+                                console.log(`[Podrun] Cancelled event message deleted`);
+                            } catch (error) {
+                                console.warn('Could not delete cancelled podrun message:', error);
+                            }
+                        }, 3000); // 3 second delay
 
-                    return;
+                        return;
+                    } catch (error) {
+                        console.error(`[Podrun] Error cancelling podrun:`, error);
+                        await buttonInteraction.reply({
+                            content: 'Error cancelling podrun. Please try again.',
+                            ephemeral: true
+                        });
+                        return;
+                    }
                 } else {
                     await buttonInteraction.reply({
                         content: 'You cannot cancel this podrun.',
@@ -240,76 +260,108 @@ export async function execute(interaction: CommandInteraction) {
                 embeds: [updatedEmbed],
                 components: [row]
             });
+            } catch (error) {
+                console.error(`[Podrun] Error in collector button handler:`, error);
+                try {
+                    if (!buttonInteraction.replied && !buttonInteraction.deferred) {
+                        await buttonInteraction.reply({
+                            content: 'An error occurred processing your request. Please try again.',
+                            ephemeral: true
+                        });
+                    }
+                } catch (replyError) {
+                    console.error(`[Podrun] Could not send error reply:`, replyError);
+                }
+            }
         });
 
-        // Set timeout for when the podrun starts
-        podrunService.setTimeout(existingPodrunKey, async () => {
-            // Get current podrun data to check if cancelled
-            const podrunData = await podrunService.getPodrun(existingPodrunKey);
-            
-            // If podrun doesn't exist or was cancelled, don't send messages
-            if (!podrunData || podrunData.status !== 'active') {
-                return;
-            }
-
-            // Disable buttons
-            const disabledRow = new ActionRowBuilder<ButtonBuilder>()
-                .addComponents(
-                    new ButtonBuilder()
-                        .setCustomId('podrun_yes')
-                        .setEmoji('👍')
-                        .setLabel('Attending')
-                        .setStyle(ButtonStyle.Primary)
-                        .setDisabled(true),
-                    new ButtonBuilder()
-                        .setCustomId('podrun_no')
-                        .setEmoji('👎')
-                        .setLabel('Erm, Naur')
-                        .setStyle(ButtonStyle.Secondary)
-                        .setDisabled(true),
-                    new ButtonBuilder()
-                        .setCustomId('podrun_cancel')
-                        .setLabel('Cancel Podrun')
-                        .setStyle(ButtonStyle.Danger)
-                        .setDisabled(true)
-                );
-
-            // Update the original message to disable buttons
-            await message.edit({
-                components: [disabledRow]
-            });
-
-            // Check if anyone besides the creator joined
-            const channel = interaction.channel as TextChannel;
-
-            if (podrunData.podrunners.size === 1) {
-                // Only the creator, send cancellation message
-                await channel.send(`Womp womp, nobody wanted to podrun with <@${creator.id}>. Podrun has been cancelled`);
-            } else {
-                // Multiple people joined, send podrun time message
-                const runnersList = Array.from(podrunData.podrunners.values()).map(u => `<@${u.id}>`).join(' ');
-                await channel.send(`It's podrun time! ${runnersList}`);
-            }
-
-            // Mark podrun as completed
-            await podrunService.completePodrun(existingPodrunKey);
-
-            // Delete the embed message after completion
+        // Set timeout for when the podrun starts using Node.js setTimeout directly
+        console.log(`[Podrun] Creating timeout with duration: ${timeoutDuration}ms`);
+        
+        const timeoutId = setTimeout(async () => {
             try {
-                await message.delete();
-                console.log(`[Podrun] Event message deleted after completion`);
-            } catch (deleteError) {
-                console.warn(`[Podrun] Could not delete completed event message:`, deleteError);
-            }
+                console.log(`[Podrun] Timeout reached! Triggering podrun time notification.`);
+                
+                // Get current podrun data to check if cancelled
+                const podrunData = await podrunService.getPodrun(existingPodrunKey);
+                
+                // If podrun doesn't exist or was cancelled, don't send messages
+                if (!podrunData || podrunData.status !== 'active') {
+                    console.log(`[Podrun] Podrun not found or not active: ${podrunData?.status}`);
+                    collector.stop('podrun_cancelled_or_expired');
+                    return;
+                }
+                
+                // Disable buttons
+                const disabledRow = new ActionRowBuilder<ButtonBuilder>()
+                    .addComponents(
+                        new ButtonBuilder()
+                            .setCustomId('podrun_yes')
+                            .setEmoji('👍')
+                            .setLabel('Attending')
+                            .setStyle(ButtonStyle.Primary)
+                            .setDisabled(true),
+                        new ButtonBuilder()
+                            .setCustomId('podrun_no')
+                            .setEmoji('👎')
+                            .setLabel('Erm, Naur')
+                            .setStyle(ButtonStyle.Secondary)
+                            .setDisabled(true),
+                        new ButtonBuilder()
+                            .setCustomId('podrun_cancel')
+                            .setLabel('Cancel Podrun')
+                            .setStyle(ButtonStyle.Danger)
+                            .setDisabled(true)
+                    );
 
-            // Stop the collector
-            collector.stop();
+                // Update the original message to disable buttons
+                await message.edit({
+                    components: [disabledRow]
+                });
+
+                // Check if anyone besides the creator joined
+                const channel = interaction.channel as TextChannel;
+
+                if (podrunData.podrunners.size === 1) {
+                    // Only the creator, send cancellation message
+                    await channel.send(`Womp womp, nobody wanted to podrun with <@${creator.id}>. Podrun has been cancelled`);
+                } else {
+                    // Multiple people joined, send podrun time message
+                    const runnersList = Array.from(podrunData.podrunners.values()).map(u => `<@${u.id}>`).join(' ');
+                    await channel.send(`It's podrun time! ${runnersList}`);
+                }
+
+                // Mark podrun as completed
+                await podrunService.completePodrun(existingPodrunKey);
+
+                // Delete the embed message after completion
+                try {
+                    await message.delete();
+                    console.log(`[Podrun] Event message deleted after completion`);
+                } catch (deleteError) {
+                    console.warn(`[Podrun] Could not delete completed event message:`, deleteError);
+                }
+
+                // Stop the collector
+                collector.stop('podrun_time_reached');
+            } catch (error) {
+                console.error(`[Podrun] Error in timeout callback:`, error);
+                collector.stop('timeout_error');
+            }
         }, timeoutDuration);
 
-        // Handle collector end (in case it ends before the timeout)
-        collector.on('end', () => {
-            // Cleanup is now handled by the podrunService
+        console.log(`[Podrun] Timeout ID created: ${timeoutId}`);
+
+        // Cleanup on collector end
+        collector.on('end', (collected: any, reason: string) => {
+            console.log(`[Podrun] Collector ended with reason: "${reason}", collected: ${collected?.size || 'unknown'} interactions`);
+            // Clear timeout if collector ends early
+            if (reason !== 'podrun_time_reached') {
+                console.log(`[Podrun] Clearing timeout due to early collector end`);
+                clearTimeout(timeoutId);
+            }
         });
+
 
     } catch (error) {
         console.error('Error executing podrun command:', error);
