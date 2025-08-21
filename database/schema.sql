@@ -23,14 +23,14 @@
 --   - Stored functions for complex statistics
 --   - Automatic maintenance procedures
 --
--- Version: Updated for all latest features and optimizations
+-- Version: Updated with increased character limits to fix varchar errors
 -- =======================================================================
 
 -- Users table to track user balances and stats
 CREATE TABLE users (
     id SERIAL PRIMARY KEY,
     user_id VARCHAR(20) NOT NULL UNIQUE, -- Discord user ID
-    username VARCHAR(32), -- Discord username for display
+    username VARCHAR(64), -- Discord username for display (increased from 32)
     balance INTEGER NOT NULL DEFAULT 0,
     last_work TIMESTAMPTZ,
     bankruptcy_bailout_used BOOLEAN DEFAULT FALSE, -- Whether user has used their one-time bailout work
@@ -43,7 +43,7 @@ CREATE TABLE users (
 -- Podruns table to track active and completed podruns
 CREATE TABLE podruns (
     id SERIAL PRIMARY KEY,
-    podrun_key VARCHAR(50) NOT NULL UNIQUE, -- guild_id-channel_id format
+    podrun_key VARCHAR(100) NOT NULL UNIQUE, -- guild_id-channel_id format (increased from 50)
     creator_id VARCHAR(20) NOT NULL, -- Discord user ID
     guild_id VARCHAR(20) NOT NULL,
     channel_id VARCHAR(20) NOT NULL,
@@ -60,7 +60,7 @@ CREATE TABLE podrun_participants (
     id SERIAL PRIMARY KEY,
     podrun_id INTEGER NOT NULL REFERENCES podruns(id) ON DELETE CASCADE,
     user_id VARCHAR(20) NOT NULL,
-    username VARCHAR(32),
+    username VARCHAR(64), -- Increased from 32
     participant_type VARCHAR(10) NOT NULL, -- 'podrunner' or 'hater'
     joined_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -69,7 +69,7 @@ CREATE TABLE podrun_participants (
 CREATE TABLE roulette_games (
     id SERIAL PRIMARY KEY,
     user_id VARCHAR(20) NOT NULL,
-    username VARCHAR(32),
+    username VARCHAR(64), -- Increased from 32
     bet_type VARCHAR(20) NOT NULL,
     bet_value VARCHAR(10), -- For specific number bets
     bet_amount INTEGER NOT NULL,
@@ -90,7 +90,7 @@ CREATE TABLE roulette_games (
 CREATE TABLE work_sessions (
     id SERIAL PRIMARY KEY,
     user_id VARCHAR(20) NOT NULL,
-    username VARCHAR(32),
+    username VARCHAR(64), -- Increased from 32
     reward_amount INTEGER NOT NULL,
     balance_before INTEGER NOT NULL,
     balance_after INTEGER NOT NULL,
@@ -102,8 +102,8 @@ CREATE TABLE transactions (
     id SERIAL PRIMARY KEY,
     sender_id VARCHAR(20) NOT NULL,
     receiver_id VARCHAR(20) NOT NULL,
-    sender_username VARCHAR(32),
-    receiver_username VARCHAR(32),
+    sender_username VARCHAR(64), -- Increased from 32
+    receiver_username VARCHAR(64), -- Increased from 32
     amount INTEGER NOT NULL,
     transaction_type VARCHAR(20) NOT NULL DEFAULT 'transfer', -- transfer, work, roulette_win, etc.
     description TEXT,
@@ -126,7 +126,7 @@ CREATE TABLE cache_entries (
 -- Dining events table to track meal meetups
 CREATE TABLE dining_events (
     id SERIAL PRIMARY KEY,
-    event_key VARCHAR(150) NOT NULL UNIQUE, -- guild_id-channel_id-meal_type-date format
+    event_key VARCHAR(200) NOT NULL UNIQUE, -- guild_id-channel_id-meal_type-date format (increased from 150)
     creator_id VARCHAR(20) NOT NULL, -- Discord user ID
     guild_id VARCHAR(20) NOT NULL,
     channel_id VARCHAR(20) NOT NULL,
@@ -145,7 +145,7 @@ CREATE TABLE dining_event_participants (
     id SERIAL PRIMARY KEY,
     dining_event_id INTEGER NOT NULL REFERENCES dining_events(id) ON DELETE CASCADE,
     user_id VARCHAR(20) NOT NULL,
-    username VARCHAR(32),
+    username VARCHAR(64), -- Increased from 32
     participant_type VARCHAR(10) NOT NULL, -- 'attendee' or 'declined'
     joined_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -291,7 +291,7 @@ ORDER BY de.created_at DESC;
 CREATE OR REPLACE FUNCTION get_top_winners(winner_limit INTEGER DEFAULT 10)
 RETURNS TABLE(
     userId VARCHAR(20),
-    username VARCHAR(32),
+    username VARCHAR(64),
     totalWinnings BIGINT,
     gamesPlayed BIGINT,
     winRate NUMERIC(5,2)

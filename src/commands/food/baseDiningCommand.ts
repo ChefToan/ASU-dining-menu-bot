@@ -174,16 +174,16 @@ export class BaseDiningCommand {
         }).toLowerCase();
 
         const dateString = mstMealTime.toLocaleDateString('en-US', {
-            weekday: 'short',
             month: 'short',
             day: 'numeric',
+            year: 'numeric',
             timeZone: 'America/Phoenix'
         });
 
         // Create embed
         const embed = new EmbedBuilder()
             .setColor(this.config.color)
-            .setDescription(`**${this.config.name} at ${diningHall.name} on ${dateString} at ${timeString}**\n\n${this.config.description}`)
+            .setDescription(`**${this.config.name} at ${diningHall.name} at ${timeString}**\n(${dateString})\n\n${this.config.description}`)
             .addFields(
                 {
                     name: `${this.config.emoji} Attending`,
@@ -514,13 +514,7 @@ export class BaseDiningCommand {
                 console.log(`[${this.config.name}] Generated attendees list from ${eventData.attendees.size} attendees: "${attendeesList}"`);
                 console.log(`[${this.config.name}] Attendees Map:`, Array.from(eventData.attendees.entries()));
                 
-                if (attendeesList && attendeesList.trim()) {
-                    await channel.send(`${this.config.emoji} ${this.config.name} time at ${diningHall.name}! ${attendeesList} - enjoy your meal! ${this.config.cancelEmoji}`);
-                } else {
-                    // Fallback if no valid attendees found
-                    console.warn(`[${this.config.name}] No valid attendees found, sending fallback message`);
-                    await channel.send(`${this.config.emoji} ${this.config.name} time at ${diningHall.name}! Enjoy your meal! ${this.config.cancelEmoji}`);
-                }
+                await channel.send(`${this.config.name} time at ${diningHall.name}! ${attendeesList}`);
             }
         } catch (error) {
             console.error('Error sending meal time notification:', error);
