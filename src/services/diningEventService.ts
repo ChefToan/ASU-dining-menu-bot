@@ -368,10 +368,8 @@ export class DiningEventService {
                 if (period === 'pm' && hour !== 12) hour += 12;
                 if (period === 'am' && hour === 12) hour = 0;
                 
-                // Create date in Phoenix timezone to avoid server timezone issues
-                const phoenixDate = new Date(baseDate.toLocaleString("en-US", {timeZone: "America/Phoenix"}));
-                const result = new Date(phoenixDate.getFullYear(), phoenixDate.getMonth(), phoenixDate.getDate(), hour, minute, 0, 0);
-                return result;
+                // Create date specifically in Phoenix timezone
+                return this.createPhoenixDate(baseDate, hour, minute);
             }
             
             // Handle 24-hour format (e.g., "14:30", "09:00")
@@ -382,10 +380,8 @@ export class DiningEventService {
                 const minute = parseInt(minuteStr);
                 
                 if (hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59) {
-                    // Create date in Phoenix timezone to avoid server timezone issues
-                    const phoenixDate = new Date(baseDate.toLocaleString("en-US", {timeZone: "America/Phoenix"}));
-                    const result = new Date(phoenixDate.getFullYear(), phoenixDate.getMonth(), phoenixDate.getDate(), hour, minute, 0, 0);
-                    return result;
+                    // Create date specifically in Phoenix timezone
+                    return this.createPhoenixDate(baseDate, hour, minute);
                 }
             }
             
@@ -395,11 +391,28 @@ export class DiningEventService {
         }
     }
 
+    // Helper method to create a date in Phoenix timezone
+    private createPhoenixDate(baseDate: Date, hour: number, minute: number): Date {
+        // Get the date components in Phoenix timezone
+        const phoenixDateStr = baseDate.toLocaleDateString("en-CA", {timeZone: "America/Phoenix"}); // YYYY-MM-DD format
+        const phoenixTimeStr = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}:00`;
+        
+        // Create ISO string for Phoenix timezone
+        const isoString = `${phoenixDateStr}T${phoenixTimeStr}.000-07:00`; // MST is UTC-7
+        
+        return new Date(isoString);
+    }
+
     // Helper method to convert any date to MST (GMT-7)
     toMST(date: Date): Date {
-        // Create a new date object to avoid mutating the original
-        const mstDate = new Date(date.toLocaleString("en-US", {timeZone: "America/Phoenix"}));
-        return mstDate;
+        // Get the date/time components in Phoenix timezone
+        const phoenixDateStr = date.toLocaleDateString("en-CA", {timeZone: "America/Phoenix"});
+        const phoenixTimeStr = date.toLocaleTimeString("en-GB", {timeZone: "America/Phoenix", hour12: false});
+        
+        // Create ISO string for Phoenix timezone (MST is UTC-7)
+        const isoString = `${phoenixDateStr}T${phoenixTimeStr}.000-07:00`;
+        
+        return new Date(isoString);
     }
 
     // Helper method to get current MST time

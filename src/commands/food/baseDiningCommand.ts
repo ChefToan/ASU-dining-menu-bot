@@ -306,7 +306,17 @@ export class BaseDiningCommand {
         } else if (buttonInteraction.customId === `${this.config.mealType}_no`) {
             await diningEventService.addParticipant(eventId, userId, user.username, 'declined');
         } else if (buttonInteraction.customId === `${this.config.mealType}_cancel`) {
-            if (userId === creator.id) {
+            // Get event data to verify creator
+            const eventData = await diningEventService.getDiningEvent(eventKey);
+            if (!eventData) {
+                await buttonInteraction.reply({
+                    content: 'Event not found.',
+                    ephemeral: true
+                });
+                return;
+            }
+
+            if (userId === eventData.creator.id) {
                 await diningEventService.cancelDiningEvent(eventKey);
                 
                 // Update the message to show cancellation, then delete it
@@ -331,7 +341,7 @@ export class BaseDiningCommand {
                 return;
             } else {
                 await buttonInteraction.reply({
-                    content: `You cannot cancel this ${this.config.name.toLowerCase()} event.`,
+                    content: `Only the event creator can cancel this ${this.config.name.toLowerCase()} event.`,
                     ephemeral: true
                 });
                 return;
