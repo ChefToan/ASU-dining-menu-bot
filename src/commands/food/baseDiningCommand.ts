@@ -278,18 +278,23 @@ export class BaseDiningCommand {
             await this.handleButtonInteraction(buttonInteraction, eventId, eventKey, creator, embed, row, collector);
         });
 
-        // Set timeout for meal time
-        const cleanupTimeoutId = diningEventService.setTimeout(eventKey, async () => {
-            console.log(`[${this.config.name}] Timeout reached! Triggering meal time notification.`);
-            await this.handleMealTimeReached(interaction, eventKey, creator, diningHall, message);
-            collector.stop('meal_time_reached');
+        // Set timeout for meal time using Node.js setTimeout directly
+        const timeoutId = setTimeout(async () => {
+            try {
+                console.log(`[${this.config.name}] Timeout reached! Triggering meal time notification.`);
+                await this.handleMealTimeReached(interaction, eventKey, creator, diningHall, message);
+                collector.stop('meal_time_reached');
+            } catch (error) {
+                console.error(`[${this.config.name}] Error in timeout callback:`, error);
+                collector.stop('timeout_error');
+            }
         }, timeoutDuration);
 
         // Cleanup on collector end
         collector.on('end', (reason: string) => {
             console.log(`[${this.config.name}] Collector ended: ${reason}`);
             // Clear timeout if collector ends early
-            diningEventService.clearTimeout(eventKey);
+            clearTimeout(timeoutId);
         });
     }
 
@@ -411,11 +416,16 @@ export class BaseDiningCommand {
         diningHall: any,
         message: any
     ): Promise<void> {
+        console.log(`[${this.config.name}] handleMealTimeReached called for eventKey: ${eventKey}`);
+        
         const eventData = await diningEventService.getDiningEvent(eventKey);
         
         if (!eventData || eventData.status !== 'active') {
+            console.log(`[${this.config.name}] Event not found or not active:`, eventData?.status);
             return;
         }
+        
+        console.log(`[${this.config.name}] Event data retrieved, attendees:`, eventData.attendees.size);
 
         // Disable buttons
         const disabledRow = new ActionRowBuilder<ButtonBuilder>()

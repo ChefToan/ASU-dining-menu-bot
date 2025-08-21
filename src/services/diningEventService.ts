@@ -456,17 +456,13 @@ export class DiningEventService {
                 return timeInMinutes >= 14 * 60 && timeInMinutes < 16.5 * 60;
 
             case 'dinner':
-                if (dayOfWeek >= 1 && dayOfWeek <= 4) {
-                    // Mon-Thu 4:30PM - 9:00PM
-                    return timeInMinutes >= 16.5 * 60 && timeInMinutes < 21 * 60;
-                } else if (dayOfWeek === 5 || dayOfWeek === 6) {
-                    // Fri-Sat 4:30PM - 7:00PM
-                    return timeInMinutes >= 16.5 * 60 && timeInMinutes < 19 * 60;
-                } else if (dayOfWeek === 0) {
-                    // Sun 4:30PM - 8:00PM
-                    return timeInMinutes >= 16.5 * 60 && timeInMinutes < 20 * 60;
-                }
-                return false;
+                // TESTING MODE: Dinner available 24/7 until breakfast starts next day
+                // TODO: Revert to original hours after testing
+                // Original hours:
+                // Mon-Thu 4:30PM - 9:00PM
+                // Fri-Sat 4:30PM - 7:00PM  
+                // Sun 4:30PM - 8:00PM
+                return true; // Allow dinner events at any time for testing
 
             default:
                 return false;
@@ -485,7 +481,7 @@ export class DiningEventService {
             case 'light_lunch':
                 return `Invalid time "${timeInput}". Light lunch is available Monday-Sunday from 2:00 PM to 4:30 PM.`;
             case 'dinner':
-                return `Invalid time "${timeInput}". Dinner is available Monday-Thursday from 4:30 PM to 9:00 PM, Friday-Saturday from 4:30 PM to 7:00 PM, and Sunday from 4:30 PM to 8:00 PM.`;
+                return `Invalid time "${timeInput}". [TESTING MODE] Dinner is available 24/7 for testing purposes.`;
             default:
                 return 'Invalid meal type.';
         }
