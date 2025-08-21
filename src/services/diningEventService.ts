@@ -368,8 +368,9 @@ export class DiningEventService {
                 if (period === 'pm' && hour !== 12) hour += 12;
                 if (period === 'am' && hour === 12) hour = 0;
                 
-                const result = new Date(baseDate);
-                result.setHours(hour, minute, 0, 0);
+                // Create date in Phoenix timezone to avoid server timezone issues
+                const phoenixDate = new Date(baseDate.toLocaleString("en-US", {timeZone: "America/Phoenix"}));
+                const result = new Date(phoenixDate.getFullYear(), phoenixDate.getMonth(), phoenixDate.getDate(), hour, minute, 0, 0);
                 return result;
             }
             
@@ -381,8 +382,9 @@ export class DiningEventService {
                 const minute = parseInt(minuteStr);
                 
                 if (hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59) {
-                    const result = new Date(baseDate);
-                    result.setHours(hour, minute, 0, 0);
+                    // Create date in Phoenix timezone to avoid server timezone issues
+                    const phoenixDate = new Date(baseDate.toLocaleString("en-US", {timeZone: "America/Phoenix"}));
+                    const result = new Date(phoenixDate.getFullYear(), phoenixDate.getMonth(), phoenixDate.getDate(), hour, minute, 0, 0);
                     return result;
                 }
             }
