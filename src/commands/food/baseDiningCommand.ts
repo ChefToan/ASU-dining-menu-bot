@@ -473,7 +473,30 @@ export class BaseDiningCommand {
             }
         }
 
+        // Mark event as completed in database
         await diningEventService.completeDiningEvent(eventKey);
+        
+        // Update the message to show completion and delete after delay
+        try {
+            await message.edit({
+                content: `${this.config.emoji} ${this.config.name} event has ended. Thanks for participating!`,
+                embeds: [],
+                components: []
+            });
+            
+            // Delete the message after a delay
+            setTimeout(async () => {
+                try {
+                    await message.delete();
+                    console.log(`[${this.config.name}] Event message deleted after completion`);
+                } catch (deleteError) {
+                    console.warn(`[${this.config.name}] Could not delete completed event message:`, deleteError);
+                }
+            }, 10000); // 10 second delay to let people see the completion message
+            
+        } catch (editError) {
+            console.warn(`[${this.config.name}] Could not edit message on completion:`, editError);
+        }
     }
 
     private async handleError(interaction: CommandInteraction, error: any): Promise<void> {
