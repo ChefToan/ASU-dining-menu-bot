@@ -456,13 +456,16 @@ export class DiningEventService {
                 return timeInMinutes >= 14 * 60 && timeInMinutes < 16.5 * 60;
 
             case 'dinner':
-                // TESTING MODE: Dinner available 24/7 until breakfast starts next day
-                // TODO: Revert to original hours after testing
-                // Original hours:
                 // Mon-Thu 4:30PM - 9:00PM
                 // Fri-Sat 4:30PM - 7:00PM  
                 // Sun 4:30PM - 8:00PM
-                return true; // Allow dinner events at any time for testing
+                if (dayOfWeek >= 1 && dayOfWeek <= 4) { // Monday-Thursday
+                    return timeInMinutes >= 16.5 * 60 && timeInMinutes <= 21 * 60;
+                } else if (dayOfWeek === 5 || dayOfWeek === 6) { // Friday-Saturday
+                    return timeInMinutes >= 16.5 * 60 && timeInMinutes <= 19 * 60;
+                } else { // Sunday
+                    return timeInMinutes >= 16.5 * 60 && timeInMinutes <= 20 * 60;
+                }
 
             default:
                 return false;
@@ -473,7 +476,6 @@ export class DiningEventService {
     getMealTimeErrorMessage(mealType: 'breakfast' | 'lunch' | 'light_lunch' | 'dinner' | 'brunch', timeInput: string): string {
         switch (mealType) {
             case 'breakfast':
-                return `Invalid time "${timeInput}". Breakfast is only available Monday-Friday from 7:00 AM to 11:00 AM.`;
             case 'brunch':
                 return `Invalid time "${timeInput}". Brunch is only available Saturday-Sunday from 10:00 AM to 2:00 PM.`;
             case 'lunch':

@@ -183,7 +183,7 @@ export class BaseDiningCommand {
         // Create embed
         const embed = new EmbedBuilder()
             .setColor(this.config.color)
-            .setDescription(`**${this.config.name} at ${diningHall.name} at ${timeString}**\n(${dateString})\n\n${this.config.description}`)
+            .setDescription(`**${this.config.name} @ ${diningHall.name} at ${timeString}**\n(${dateString})\n\n${this.config.description}`)
             .addFields(
                 {
                     name: `${this.config.emoji} Attending`,
@@ -203,12 +203,12 @@ export class BaseDiningCommand {
                 new ButtonBuilder()
                     .setCustomId(`${this.config.mealType}_yes`)
                     .setEmoji(this.config.emoji)
-                    .setLabel('I\'m In!')
+                    .setLabel('Attending')
                     .setStyle(ButtonStyle.Primary),
                 new ButtonBuilder()
                     .setCustomId(`${this.config.mealType}_no`)
                     .setEmoji('❌')
-                    .setLabel('Can\'t Make It')
+                    .setLabel('Erm, Naur')
                     .setStyle(ButtonStyle.Secondary),
                 new ButtonBuilder()
                     .setCustomId(`${this.config.mealType}_cancel`)
@@ -478,13 +478,13 @@ export class BaseDiningCommand {
                 new ButtonBuilder()
                     .setCustomId(`${this.config.mealType}_yes`)
                     .setEmoji(this.config.emoji)
-                    .setLabel('I\'m In!')
+                    .setLabel('Attending')
                     .setStyle(ButtonStyle.Primary)
                     .setDisabled(true),
                 new ButtonBuilder()
                     .setCustomId(`${this.config.mealType}_no`)
                     .setEmoji('❌')
-                    .setLabel('Can\'t Make It')
+                    .setLabel('Erm, Naur')
                     .setStyle(ButtonStyle.Secondary)
                     .setDisabled(true),
                 new ButtonBuilder()
@@ -503,7 +503,7 @@ export class BaseDiningCommand {
             
             if (eventData.attendees.size <= 1) {
                 // Only the creator or no one
-                await channel.send(`No one else wanted to join <@${creator.id}> for ${this.config.name.toLowerCase()} at ${diningHall.name}. Event cancelled! ${this.config.cancelEmoji}`);
+                await channel.send(`Womp womp, nobody wanted to get ${this.config.name.toLowerCase()} with <@${creator.id}> at ${diningHall.name}. Event cancelled!`);
             } else {
                 // Multiple attendees - ping them all
                 const attendeesList = Array.from(eventData.attendees.keys())
@@ -529,26 +529,12 @@ export class BaseDiningCommand {
         // Mark event as completed in database
         await diningEventService.completeDiningEvent(eventKey);
         
-        // Update the message to show completion and delete after delay
+        // Delete the message after completion
         try {
-            await message.edit({
-                content: `${this.config.emoji} ${this.config.name} event has ended. Thanks for participating!`,
-                embeds: [],
-                components: []
-            });
-            
-            // Delete the message after a delay
-            setTimeout(async () => {
-                try {
-                    await message.delete();
-                    console.log(`[${this.config.name}] Event message deleted after completion`);
-                } catch (deleteError) {
-                    console.warn(`[${this.config.name}] Could not delete completed event message:`, deleteError);
-                }
-            }, 10000); // 10 second delay to let people see the completion message
-            
-        } catch (editError) {
-            console.warn(`[${this.config.name}] Could not edit message on completion:`, editError);
+            await message.delete();
+            console.log(`[${this.config.name}] Event message deleted after completion`);
+        } catch (deleteError) {
+            console.warn(`[${this.config.name}] Could not delete completed event message:`, deleteError);
         }
     }
 

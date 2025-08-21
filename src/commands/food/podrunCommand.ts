@@ -71,7 +71,8 @@ export async function execute(interaction: CommandInteraction) {
         }
 
         // Check if there's already an active podrun in this channel for the same day
-        const existingPodrunKey = `${guildId}-${channelId}-${runTime.toDateString()}`;
+        const dateKey = runTime.toISOString().split('T')[0]; // YYYY-MM-DD format
+        const existingPodrunKey = `${guildId}-${channelId}-${dateKey}`;
         if (await podrunService.podrunExists(existingPodrunKey)) {
             await interaction.reply({
                 content: 'There\'s already an active podrun in this channel for that day! Wait for it to finish before starting a new one.',
@@ -93,14 +94,14 @@ export async function execute(interaction: CommandInteraction) {
         }).toLowerCase();
 
         const dateString = mstRunTime.toLocaleDateString('en-US', {
-            weekday: 'short',
             month: 'short',
             day: 'numeric',
+            year: 'numeric',
             timeZone: 'America/Phoenix'
         });
 
         // Create the embed message
-        const embedDescription = `**Podrun on ${dateString} at ${timeString}**\n\nReact with a thumbs up to this message, if you would like to podrun`;
+        const embedDescription = `**Podrun** at ${timeString}\n(${dateString})\n\nReact with a thumbs up to this message, if you would like to podrun`;
 
         // Create the initial embed
         const embed = new EmbedBuilder()
