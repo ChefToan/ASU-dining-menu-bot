@@ -101,7 +101,7 @@ export async function execute(interaction: CommandInteraction) {
         });
 
         // Create the embed message
-        const embedDescription = `**Podrun** at ${timeString}\n(${dateString})\n\nReact with a thumbs up to this message, if you would like to podrun`;
+        const embedDescription = `**Podrun at ${timeString}**\n(${dateString})\n\nReact with a thumbs up to this message, if you would like to podrun`;
 
         // Create the initial embed
         const embed = new EmbedBuilder()
@@ -293,6 +293,14 @@ export async function execute(interaction: CommandInteraction) {
 
             // Mark podrun as completed
             await podrunService.completePodrun(existingPodrunKey);
+
+            // Delete the embed message after completion
+            try {
+                await message.delete();
+                console.log(`[Podrun] Event message deleted after completion`);
+            } catch (deleteError) {
+                console.warn(`[Podrun] Could not delete completed event message:`, deleteError);
+            }
 
             // Stop the collector
             collector.stop();
