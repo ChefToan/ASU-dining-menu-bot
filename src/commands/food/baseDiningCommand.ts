@@ -225,7 +225,7 @@ export class BaseDiningCommand {
         const message = await interaction.fetchReply();
 
         // Create event in database
-        const startTime = new Date();
+        const startTime = diningEventService.getMSTNow();
         const eventId = await diningEventService.createDiningEvent(
             eventKey,
             creator,
@@ -262,7 +262,11 @@ export class BaseDiningCommand {
         embed: EmbedBuilder,
         row: ActionRowBuilder<ButtonBuilder>
     ): Promise<void> {
-        const timeoutDuration = Math.min(mealTime.getTime() - startTime.getTime(), 24 * 60 * 60 * 1000); // Max 24 hours
+        // Ensure both dates are in the same timezone context for accurate calculation
+        const now = diningEventService.getMSTNow();
+        const timeoutDuration = Math.min(mealTime.getTime() - now.getTime(), 24 * 60 * 60 * 1000); // Max 24 hours
+        
+        console.log(`[${this.config.name}] Setting up timeout - Now: ${now.toISOString()}, Meal Time: ${mealTime.toISOString()}, Duration: ${timeoutDuration}ms (${Math.round(timeoutDuration / 1000 / 60)} minutes)`);
 
         // Create collector with reasonable timeout
         const collector = message.createMessageComponentCollector({
@@ -276,6 +280,7 @@ export class BaseDiningCommand {
 
         // Set timeout for meal time
         const cleanupTimeoutId = diningEventService.setTimeout(eventKey, async () => {
+            console.log(`[${this.config.name}] Timeout reached! Triggering meal time notification.`);
             await this.handleMealTimeReached(interaction, eventKey, creator, diningHall, message);
             collector.stop('meal_time_reached');
         }, timeoutDuration);
