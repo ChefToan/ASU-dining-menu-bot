@@ -5,6 +5,51 @@ import { DINING_HALLS } from '../utils/config';
 
 const ASU_MENU_API_URL = 'https://asu.campusdish.com/api/menu/GetMenus';
 
+// Circuit breaker state
+class CircuitBreaker {
+    private failureCount = 0;
+    private lastFailureTime = 0;
+    private readonly failureThreshold = 5;
+    private readonly recoveryTimeoutMs = 300000; // 5 minutes
+
+    canMakeRequest(): boolean {
+        if (this.failureCount < this.failureThreshold) {
+            return true;
+        }
+        
+        const now = Date.now();
+        if (now - this.lastFailureTime >= this.recoveryTimeoutMs) {
+            this.reset();
+            return true;
+        }
+        
+        return false;
+    }
+
+    recordFailure(): void {
+        this.failureCount++;
+        this.lastFailureTime = Date.now();
+    }
+
+    recordSuccess(): void {
+        this.failureCount = 0;
+    }
+
+    reset(): void {
+        this.failureCount = 0;
+        this.lastFailureTime = 0;
+    }
+
+    getState(): { failureCount: number; canMakeRequest: boolean } {
+        return {
+            failureCount: this.failureCount,
+            canMakeRequest: this.canMakeRequest()
+        };
+    }
+}
+
+const circuitBreaker = new CircuitBreaker();
+
 export class MenuService {
     /**
      * Fetch menu with Supabase caching
@@ -24,6 +69,13 @@ export class MenuService {
                 return cachedData;
             }
 
+            // Check circuit breaker before making API call
+            if (!circuitBreaker.canMakeRequest()) {
+                const state = circuitBreaker.getState();
+                console.warn(`[MenuService] Circuit breaker is OPEN (${state.failureCount} failures). Skipping API call for ${cacheKey}`);
+                throw new Error('Service temporarily unavailable due to repeated failures');
+            }
+
             // If not in cache, fetch from ASU API
             console.log(`[MenuService] Cache MISS for ${cacheKey}, fetching from ASU API...`);
             
@@ -35,28 +87,39 @@ export class MenuService {
                 }
             });
 
-            // Retry logic for API calls
+            // Retry logic for API calls with exponential backoff
             let response;
             let lastError;
-            const maxRetries = 2;
+            const maxRetries = 3; // Increased retries
             
             for (let attempt = 0; attempt <= maxRetries; attempt++) {
                 try {
                     response = await axios.get(ASU_MENU_API_URL, { 
                         params: queryParams,
-                        timeout: 15000 // 15 second timeout
+                        timeout: 30000, // Increased to 30 second timeout
+                        headers: {
+                            'User-Agent': 'ASU-Dining-Bot/1.0',
+                            'Accept': 'application/json',
+                            'Accept-Encoding': 'gzip, deflate'
+                        }
                     });
-                    break; // Success, exit retry loop
+                    // Success - record it and break
+                    circuitBreaker.recordSuccess();
+                    break;
                 } catch (error) {
                     lastError = error;
                     if (attempt < maxRetries) {
-                        console.log(`[MenuService] API call failed (attempt ${attempt + 1}/${maxRetries + 1}), retrying in 2s...`);
-                        await new Promise(resolve => setTimeout(resolve, 2000)); // 2 second delay
+                        // Exponential backoff: 3s, 9s, 27s
+                        const delay = 3000 * Math.pow(3, attempt);
+                        console.log(`[MenuService] API call failed (attempt ${attempt + 1}/${maxRetries + 1}), retrying in ${delay/1000}s...`);
+                        await new Promise(resolve => setTimeout(resolve, delay));
                     }
                 }
             }
             
             if (!response) {
+                // Record failure in circuit breaker
+                circuitBreaker.recordFailure();
                 throw lastError || new Error('All retry attempts failed');
             }
 
@@ -81,47 +144,79 @@ export class MenuService {
      */
     static async preloadTodaysMenus(): Promise<void> {
         console.log('[MenuService] Starting menu preload for all dining halls...');
+        const startTime = Date.now();
+        
+        // Check circuit breaker before starting
+        const cbState = circuitBreaker.getState();
+        if (!cbState.canMakeRequest) {
+            console.warn(`[MenuService] Circuit breaker is OPEN. Preload aborted. Failure count: ${cbState.failureCount}`);
+            return;
+        }
         
         const today = new Date();
         const dateString = `${today.getMonth() + 1}/${today.getDate()}/${today.getFullYear()}`;
         
-        const preloadPromises: Promise<void>[] = [];
+        let successCount = 0;
+        let failureCount = 0;
+        const failures: string[] = [];
 
         // Preload for each dining hall
         for (const [hallKey, hallConfig] of Object.entries(DINING_HALLS)) {
+            // Check circuit breaker between halls
+            if (!circuitBreaker.canMakeRequest()) {
+                console.warn(`[MenuService] Circuit breaker opened during preload. Stopping early.`);
+                break;
+            }
+
             // Preload general menu (no specific period)
-            preloadPromises.push(
-                this.preloadMenuForHall(hallConfig.id, dateString, "")
-                    .catch(error => {
-                        console.error(`[MenuService] Failed to preload general menu for ${hallKey}:`, error);
-                    })
-            );
+            try {
+                await this.preloadMenuForHall(hallConfig.id, dateString, "");
+                successCount++;
+            } catch (error) {
+                failureCount++;
+                const errorMsg = `${hallKey} (general)`;
+                failures.push(errorMsg);
+                console.error(`[MenuService] Failed to preload general menu for ${hallKey}:`, error);
+            }
+
+            // Small delay between general and period requests
+            await new Promise(resolve => setTimeout(resolve, 1000));
 
             // Preload common meal periods
             const commonPeriods = ["980", "981", "3080", "982"]; // Breakfast, Lunch, Light Lunch, Dinner
             for (const periodId of commonPeriods) {
-                preloadPromises.push(
-                    this.preloadMenuForHall(hallConfig.id, dateString, periodId)
-                        .catch(error => {
-                            console.error(`[MenuService] Failed to preload ${hallKey} period ${periodId}:`, error);
-                        })
-                );
-            }
-        }
+                try {
+                    await this.preloadMenuForHall(hallConfig.id, dateString, periodId);
+                    successCount++;
+                } catch (error) {
+                    failureCount++;
+                    const errorMsg = `${hallKey} (period ${periodId})`;
+                    failures.push(errorMsg);
+                    console.error(`[MenuService] Failed to preload ${hallKey} period ${periodId}:`, error);
+                }
 
-        // Wait for all preloads to complete with some staggering to avoid overwhelming API
-        const batchSize = 3; // Process 3 requests at a time
-        for (let i = 0; i < preloadPromises.length; i += batchSize) {
-            const batch = preloadPromises.slice(i, i + batchSize);
-            await Promise.allSettled(batch);
-            
-            // Small delay between batches to be respectful to ASU's API
-            if (i + batchSize < preloadPromises.length) {
-                await new Promise(resolve => setTimeout(resolve, 1000)); // 1 second between batches
+                // Delay between period requests to avoid overwhelming API
+                await new Promise(resolve => setTimeout(resolve, 2000));
+            }
+
+            // Longer delay between dining halls
+            if (Object.keys(DINING_HALLS).indexOf(hallKey) < Object.keys(DINING_HALLS).length - 1) {
+                await new Promise(resolve => setTimeout(resolve, 3000));
             }
         }
         
-        console.log('[MenuService] Menu preload completed');
+        const endTime = Date.now();
+        const duration = Math.round((endTime - startTime) / 1000);
+        
+        console.log(`[MenuService] Menu preload completed in ${duration}s`);
+        console.log(`[MenuService] Results: ${successCount} succeeded, ${failureCount} failed`);
+        
+        if (failures.length > 0) {
+            console.log(`[MenuService] Failed preloads: ${failures.join(', ')}`);
+        }
+
+        const finalCbState = circuitBreaker.getState();
+        console.log(`[MenuService] Circuit breaker state: ${finalCbState.failureCount} failures, can make requests: ${finalCbState.canMakeRequest}`);
     }
 
     /**
@@ -160,6 +255,21 @@ export class MenuService {
      */
     static async clearCache(): Promise<boolean> {
         return await menuCacheService.clearAll();
+    }
+
+    /**
+     * Get circuit breaker status
+     */
+    static getCircuitBreakerStatus(): { failureCount: number; canMakeRequest: boolean } {
+        return circuitBreaker.getState();
+    }
+
+    /**
+     * Reset circuit breaker (for manual recovery)
+     */
+    static resetCircuitBreaker(): void {
+        circuitBreaker.reset();
+        console.log('[MenuService] Circuit breaker has been manually reset');
     }
 }
 

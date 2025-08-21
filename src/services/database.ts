@@ -1,7 +1,6 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { config } from 'dotenv';
-
-config();
+import { env } from '../utils/env';
+import { errorHandler, ErrorType } from '../utils/errorHandler';
 
 export interface Database {
   public: {
@@ -91,6 +90,9 @@ export interface Database {
           payout_ratio: number;
           balance_before: number;
           balance_after: number;
+          pity_applied: boolean;
+          pity_bonus_percentage: number;
+          losing_streak: number;
           played_at: string;
         };
         Insert: {
@@ -106,6 +108,9 @@ export interface Database {
           payout_ratio?: number;
           balance_before: number;
           balance_after: number;
+          pity_applied?: boolean;
+          pity_bonus_percentage?: number;
+          losing_streak?: number;
         };
         Update: never;
       };
@@ -144,6 +149,58 @@ export interface Database {
         Update: {
           data?: any;
           expires_at?: string;
+        };
+      };
+      dining_events: {
+        Row: {
+          id: number;
+          event_key: string;
+          creator_id: string;
+          guild_id: string;
+          channel_id: string;
+          message_id: string | null;
+          meal_type: string;
+          dining_hall: string;
+          start_time: string;
+          meal_time: string;
+          status: 'active' | 'completed' | 'cancelled';
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          event_key: string;
+          creator_id: string;
+          guild_id: string;
+          channel_id: string;
+          message_id?: string;
+          meal_type: string;
+          dining_hall: string;
+          start_time: string;
+          meal_time: string;
+          status?: 'active' | 'completed' | 'cancelled';
+        };
+        Update: {
+          message_id?: string;
+          status?: 'active' | 'completed' | 'cancelled';
+        };
+      };
+      dining_event_participants: {
+        Row: {
+          id: number;
+          dining_event_id: number;
+          user_id: string;
+          username: string | null;
+          participant_type: 'attendee' | 'declined';
+          joined_at: string;
+        };
+        Insert: {
+          dining_event_id: number;
+          user_id: string;
+          username?: string;
+          participant_type: 'attendee' | 'declined';
+        };
+        Update: {
+          participant_type?: 'attendee' | 'declined';
         };
       };
     };
@@ -190,13 +247,9 @@ class DatabaseService {
   private static instance: DatabaseService;
 
   constructor() {
-    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
-      throw new Error('Missing Supabase environment variables (SUPABASE_URL, SUPABASE_ANON_KEY)');
-    }
-
     this.supabase = createClient<Database>(
-      process.env.SUPABASE_URL,
-      process.env.SUPABASE_ANON_KEY
+      env.get('SUPABASE_URL'),
+      env.get('SUPABASE_ANON_KEY')
     );
   }
 
@@ -221,7 +274,7 @@ class DatabaseService {
       
       return !error;
     } catch (error) {
-      console.error('Database connection test failed:', error);
+      errorHandler.handleServiceError(error, 'database.testConnection');
       return false;
     }
   }
@@ -235,7 +288,7 @@ class DatabaseService {
       if (error) throw error;
       return data || 0;
     } catch (error) {
-      console.error('Error cleaning expired cache:', error);
+      errorHandler.handleServiceError(error, 'database.cleanExpiredCache');
       return 0;
     }
   }

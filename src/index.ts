@@ -1,5 +1,6 @@
 import { Client, Events, GatewayIntentBits, Collection } from 'discord.js';
-import { config } from 'dotenv';
+import { env } from './utils/env';
+import { errorHandler } from './utils/errorHandler';
 import * as podrunCommand from './commands/food/podrunCommand';
 import * as workCommand from './commands/roulette/workCommand';
 import * as rouletteCommand from './commands/roulette/rouletteCommand';
@@ -20,8 +21,7 @@ import { podrunService } from './services/podrunService';
 import { diningEventService } from './services/diningEventService';
 import { menuScheduler } from './services/menuScheduler';
 
-// Load environment variables
-config();
+// Environment variables are loaded and validated by env.ts
 
 // Create a new client
 const client = new Client({
@@ -104,21 +104,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
     try {
         await command.execute(interaction);
     } catch (error) {
-        console.error('Error executing command:', error);
-
-        try {
-            const errorMessage = 'There was an error executing this command!';
-
-            if (interaction.replied || interaction.deferred) {
-                await interaction.followUp({ content: errorMessage, ephemeral: true })
-                    .catch(e => console.error('Could not follow up with error:', e));
-            } else {
-                await interaction.reply({ content: errorMessage, ephemeral: true })
-                    .catch(e => console.error('Could not reply with error:', e));
-            }
-        } catch (responseError) {
-            console.error('Failed to send error response:', responseError);
-        }
+        await errorHandler.handleCommandError(interaction, error, {
+            commandName: interaction.commandName
+        });
     }
 });
 
@@ -140,14 +128,14 @@ const registerCommands = async () => {
         dinnerCommand.data.toJSON(),
         // testMealCommand.data.toJSON()
     ];
-    const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN!);
+    const rest = new REST({ version: '10' }).setToken(env.get('DISCORD_TOKEN'));
 
     try {
         console.log('Started refreshing application (/) commands.');
 
         try {
             await rest.put(
-                Routes.applicationCommands(process.env.APPLICATION_ID!),
+                Routes.applicationCommands(env.get('APPLICATION_ID')),
                 { body: commands }
             );
             console.log('Successfully registered global commands.');
@@ -171,7 +159,7 @@ const startBot = async () => {
         });
 
         // Login to Discord
-        return client.login(process.env.DISCORD_TOKEN).catch(error => {
+        return client.login(env.get('DISCORD_TOKEN')).catch(error => {
             console.error('Failed to login:', error);
             throw error;
         });

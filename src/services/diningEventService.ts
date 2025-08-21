@@ -66,7 +66,8 @@ export class DiningEventService {
 
             return data.id;
         } catch (error) {
-            console.error('Error creating dining event:', error);
+            const { errorHandler } = await import('../utils/errorHandler');
+            errorHandler.handleServiceError(error, 'diningEventService.createDiningEvent');
             return null;
         }
     }
@@ -201,6 +202,17 @@ export class DiningEventService {
                 this.timeouts.delete(eventKey);
             }
 
+            // Delete the cancelled event after a short delay to allow for immediate recreation
+            if (!error) {
+                setTimeout(async () => {
+                    await db.getClient()
+                        .from('dining_events')
+                        .delete()
+                        .eq('event_key', eventKey)
+                        .eq('status', 'cancelled');
+                }, 5000); // 5 second delay
+            }
+
             return !error;
         } catch (error) {
             console.error('Error cancelling dining event:', error);
@@ -221,6 +233,17 @@ export class DiningEventService {
             if (timeout) {
                 clearTimeout(timeout);
                 this.timeouts.delete(eventKey);
+            }
+
+            // Delete the completed event after a short delay to allow for immediate recreation
+            if (!error) {
+                setTimeout(async () => {
+                    await db.getClient()
+                        .from('dining_events')
+                        .delete()
+                        .eq('event_key', eventKey)
+                        .eq('status', 'completed');
+                }, 5000); // 5 second delay
             }
 
             return !error;
@@ -249,6 +272,17 @@ export class DiningEventService {
     async cleanupExpiredEvents(eventKey?: string): Promise<boolean> {
         try {
             const now = new Date();
+            
+            // First, delete any cancelled or completed events with the same event_key (if specified)
+            if (eventKey) {
+                await db.getClient()
+                    .from('dining_events')
+                    .delete()
+                    .eq('event_key', eventKey)
+                    .in('status', ['cancelled', 'completed']);
+            }
+
+            // Then mark expired active events as completed
             let query = db.getClient()
                 .from('dining_events')
                 .update({ status: 'completed' })

@@ -54,13 +54,13 @@ export const MEAL_PERIODS = {
 // Cache configuration
 export const CACHE_CONFIG = {
     // Default TTL (Time-to-live) for cache entries in milliseconds
-    DEFAULT_TTL: 24 * 60 * 60 * 1000, // 30 minutes
+    DEFAULT_TTL: 4 * 60 * 60 * 1000, // 4 hours (reduced from 24)
 
     // Whether to auto-clean expired cache entries periodically
     AUTO_CLEAN: true,
 
-    // Interval for auto-cleaning in milliseconds (every hour)
-    CLEAN_INTERVAL: 60 * 60 * 1000
+    // Interval for auto-cleaning in milliseconds (every 30 minutes)
+    CLEAN_INTERVAL: 30 * 60 * 1000
 };
 
 // Menu command configuration

@@ -1,5 +1,6 @@
 import { db } from './database';
 import { BetType } from '../utils/rouletteGame';
+import { errorHandler } from '../utils/errorHandler';
 
 export interface RouletteGameResult {
     id?: number;
@@ -59,7 +60,7 @@ export class RouletteService {
             if (error) throw error;
             return data.id;
         } catch (error) {
-            console.error('Error recording roulette game:', error);
+            errorHandler.handleServiceError(error, 'rouletteService.recordGame');
             return null;
         }
     }
@@ -93,7 +94,7 @@ export class RouletteService {
                 netProfit
             };
         } catch (error) {
-            console.error('Error getting user stats:', error);
+            errorHandler.handleServiceError(error, 'rouletteService.getUserStats');
             return this.getEmptyStats();
         }
     }
