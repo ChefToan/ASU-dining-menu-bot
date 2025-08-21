@@ -305,6 +305,8 @@ export class BaseDiningCommand {
         try {
             const userId = buttonInteraction.user.id;
             const user = buttonInteraction.user;
+            
+            console.log(`[${this.config.name}] Button interaction: ${buttonInteraction.customId} by user ${userId}`);
 
         if (buttonInteraction.customId === `${this.config.mealType}_yes`) {
             await diningEventService.addParticipant(eventId, userId, user.username, 'attendee');
@@ -360,11 +362,11 @@ export class BaseDiningCommand {
         if (!eventData) return;
 
         const attendeesText = eventData.attendees.size > 0
-            ? Array.from(eventData.attendees.values()).map(user => `<@${user.id}>`).join('\n')
+            ? Array.from(eventData.attendees.keys()).map(userId => `<@${userId}>`).join('\n')
             : '\u200B';
 
         const declinedText = eventData.declined.size > 0
-            ? Array.from(eventData.declined.values()).map(user => `<@${user.id}>`).join('\n')
+            ? Array.from(eventData.declined.keys()).map(userId => `<@${userId}>`).join('\n')
             : '\u200B';
 
         const updatedEmbed = EmbedBuilder.from(embed)
@@ -385,10 +387,12 @@ export class BaseDiningCommand {
                 embeds: [updatedEmbed],
                 components: [row]
             });
+            
+            console.log(`[${this.config.name}] Successfully updated embed for ${buttonInteraction.customId}`);
         } catch (error) {
             console.error(`Error handling button interaction for ${this.config.name}:`, error);
             try {
-                if (!buttonInteraction.replied) {
+                if (!buttonInteraction.replied && !buttonInteraction.deferred) {
                     await buttonInteraction.reply({
                         content: 'There was an error processing your request. Please try again.',
                         ephemeral: true
