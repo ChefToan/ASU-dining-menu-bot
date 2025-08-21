@@ -422,9 +422,11 @@ export class DiningEventService {
 
     // Validate if time is within meal period
     isValidMealTime(mealType: 'breakfast' | 'lunch' | 'light_lunch' | 'dinner' | 'brunch', timeDate: Date): boolean {
-        const hour = timeDate.getHours();
-        const minute = timeDate.getMinutes();
-        const dayOfWeek = timeDate.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+        // Get the time components in Phoenix timezone
+        const phoenixDate = new Date(timeDate.toLocaleString("en-US", {timeZone: "America/Phoenix"}));
+        const hour = phoenixDate.getHours();
+        const minute = phoenixDate.getMinutes();
+        const dayOfWeek = phoenixDate.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
         const timeInMinutes = hour * 60 + minute;
 
         switch (mealType) {
