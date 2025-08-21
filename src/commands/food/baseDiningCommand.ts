@@ -274,10 +274,9 @@ export class BaseDiningCommand {
             console.warn(`[${this.config.name}] WARNING: Meal time is in the past! Raw duration: ${rawDuration}ms`);
         }
 
-        // Create collector with reasonable timeout
+        // Create collector without automatic timeout (we handle timeout manually)
         const collector = message.createMessageComponentCollector({
-            componentType: ComponentType.Button,
-            time: timeoutDuration
+            componentType: ComponentType.Button
         });
 
         collector.on('collect', async (buttonInteraction: ButtonInteraction) => {
