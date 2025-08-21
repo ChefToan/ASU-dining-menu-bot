@@ -316,7 +316,9 @@ export class BaseDiningCommand {
                 return;
             }
 
-            if (userId === eventData.creator.id) {
+            console.log(`[${this.config.name}] Cancel attempt - User ID: "${userId}", Creator ID: "${eventData.creator.id}", Type check: ${typeof userId} vs ${typeof eventData.creator.id}`);
+            
+            if (userId === eventData.creator.id || userId === eventData.creator.id.toString()) {
                 await diningEventService.cancelDiningEvent(eventKey);
                 
                 // Update the message to show cancellation, then delete it
@@ -440,14 +442,15 @@ export class BaseDiningCommand {
                 await channel.send(`No one else wanted to join <@${creator.id}> for ${this.config.name.toLowerCase()} at ${diningHall.name}. Event cancelled! ${this.config.cancelEmoji}`);
             } else {
                 // Multiple attendees - ping them all
-                const attendeesList = Array.from(eventData.attendees.values())
-                    .filter(user => user && user.id) // Filter out any invalid users
-                    .map(user => `<@${user.id}>`)
+                const attendeesList = Array.from(eventData.attendees.keys())
+                    .filter(userId => userId && userId.trim()) // Filter out empty user IDs
+                    .map(userId => `<@${userId}>`)
                     .join(' ');
                 
-                console.log(`[${this.config.name}] Generated attendees list: "${attendeesList}"`);
+                console.log(`[${this.config.name}] Generated attendees list from ${eventData.attendees.size} attendees: "${attendeesList}"`);
+                console.log(`[${this.config.name}] Attendees Map:`, Array.from(eventData.attendees.entries()));
                 
-                if (attendeesList) {
+                if (attendeesList && attendeesList.trim()) {
                     await channel.send(`${this.config.emoji} ${this.config.name} time at ${diningHall.name}! ${attendeesList} - enjoy your meal! ${this.config.cancelEmoji}`);
                 } else {
                     // Fallback if no valid attendees found
