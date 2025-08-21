@@ -264,9 +264,15 @@ export class BaseDiningCommand {
     ): Promise<void> {
         // Ensure both dates are in the same timezone context for accurate calculation
         const now = diningEventService.getMSTNow();
-        const timeoutDuration = Math.min(mealTime.getTime() - now.getTime(), 24 * 60 * 60 * 1000); // Max 24 hours
+        const rawDuration = mealTime.getTime() - now.getTime();
+        const timeoutDuration = Math.min(Math.max(rawDuration, 1000), 24 * 60 * 60 * 1000); // Min 1 second, Max 24 hours
         
-        console.log(`[${this.config.name}] Setting up timeout - Now: ${now.toISOString()}, Meal Time: ${mealTime.toISOString()}, Duration: ${timeoutDuration}ms (${Math.round(timeoutDuration / 1000 / 60)} minutes)`);
+        console.log(`[${this.config.name}] Setting up timeout - Now: ${now.toISOString()}, Meal Time: ${mealTime.toISOString()}`);
+        console.log(`[${this.config.name}] Raw duration: ${rawDuration}ms, Final duration: ${timeoutDuration}ms (${Math.round(timeoutDuration / 1000 / 60)} minutes)`);
+        
+        if (rawDuration <= 0) {
+            console.warn(`[${this.config.name}] WARNING: Meal time is in the past! Raw duration: ${rawDuration}ms`);
+        }
 
         // Create collector with reasonable timeout
         const collector = message.createMessageComponentCollector({
@@ -279,6 +285,8 @@ export class BaseDiningCommand {
         });
 
         // Set timeout for meal time using Node.js setTimeout directly
+        console.log(`[${this.config.name}] Creating timeout with duration: ${timeoutDuration}ms`);
+        
         const timeoutId = setTimeout(async () => {
             try {
                 console.log(`[${this.config.name}] Timeout reached! Triggering meal time notification.`);
@@ -289,6 +297,13 @@ export class BaseDiningCommand {
                 collector.stop('timeout_error');
             }
         }, timeoutDuration);
+        
+        // Add a test timeout to verify setTimeout is working
+        setTimeout(() => {
+            console.log(`[${this.config.name}] Test timeout fired after 5 seconds - setTimeout mechanism is working`);
+        }, 5000);
+        
+        console.log(`[${this.config.name}] Timeout ID created: ${timeoutId}`);
 
         // Cleanup on collector end
         collector.on('end', (reason: string) => {
