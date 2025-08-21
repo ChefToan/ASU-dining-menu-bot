@@ -71,10 +71,10 @@ client.once(Events.ClientReady, async (readyClient) => {
         console.warn('⚠️ Database connection failed - some features may not work');
     }
 
-    // Clean up any expired podruns on startup
-    console.log('Cleaning up expired podruns...');
-    await podrunService.cleanupExpiredPodruns();
-    console.log('✅ Expired podruns cleaned up');
+    // Clean up any old podruns on startup
+    console.log('Cleaning up old podruns...');
+    await podrunService.cleanupOldPodruns();
+    console.log('✅ Old podruns cleaned up');
 
     // Clean up any expired dining events on startup
     console.log('Cleaning up expired dining events...');

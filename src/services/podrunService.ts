@@ -35,8 +35,8 @@ export class PodrunService {
         messageId?: string
     ): Promise<number | null> {
         try {
-            // First, clean up any expired podruns with the same key
-            await this.cleanupExpiredPodruns(podrunKey);
+            // First, clean up any old podruns with the same key
+            await this.cleanupOldPodruns(podrunKey);
 
             const { data, error } = await db.getClient()
                 .from('podruns')
@@ -238,47 +238,47 @@ export class PodrunService {
         }
     }
 
-    async cleanupExpiredPodruns(podrunKey?: string): Promise<boolean> {
+    async cleanupOldPodruns(podrunKey?: string): Promise<boolean> {
         try {
-            // First, get expired podrun IDs
-            let expiredPodrunsQuery = db.getClient()
+            // Find podruns to clean up: either expired OR cancelled/completed (non-active)
+            let cleanupPodrunsQuery = db.getClient()
                 .from('podruns')
                 .select('id')
-                .lt('run_time', new Date().toISOString());
+                .or(`run_time.lt.${new Date().toISOString()},status.neq.active`);
 
             if (podrunKey) {
-                expiredPodrunsQuery = expiredPodrunsQuery.eq('podrun_key', podrunKey);
+                cleanupPodrunsQuery = cleanupPodrunsQuery.eq('podrun_key', podrunKey);
             }
 
-            const { data: expiredPodruns, error: selectError } = await expiredPodrunsQuery;
+            const { data: cleanupPodruns, error: selectError } = await cleanupPodrunsQuery;
 
             if (selectError) {
-                console.error('Error finding expired podruns:', selectError);
+                console.error('Error finding podruns to clean up:', selectError);
                 return false;
             }
 
-            if (!expiredPodruns || expiredPodruns.length === 0) {
-                return true; // No expired podruns to clean up
+            if (!cleanupPodruns || cleanupPodruns.length === 0) {
+                return true; // No podruns to clean up
             }
 
-            const expiredPodrunIds = expiredPodruns.map(p => p.id);
+            const cleanupPodrunIds = cleanupPodruns.map(p => p.id);
 
-            // Delete participants of expired podruns
+            // Delete participants of podruns to be cleaned up
             const { error: participantsError } = await db.getClient()
                 .from('podrun_participants')
                 .delete()
-                .in('podrun_id', expiredPodrunIds);
+                .in('podrun_id', cleanupPodrunIds);
 
             if (participantsError) {
-                console.error('Error deleting expired podrun participants:', participantsError);
+                console.error('Error deleting podrun participants:', participantsError);
                 // Continue anyway to try to delete the podruns themselves
             }
 
-            // Then delete the expired podruns themselves
+            // Then delete the podruns themselves (expired OR non-active)
             let deleteQuery = db.getClient()
                 .from('podruns')
                 .delete()
-                .lt('run_time', new Date().toISOString());
+                .or(`run_time.lt.${new Date().toISOString()},status.neq.active`);
 
             if (podrunKey) {
                 deleteQuery = deleteQuery.eq('podrun_key', podrunKey);
@@ -287,13 +287,13 @@ export class PodrunService {
             const { error } = await deleteQuery;
 
             if (error) {
-                console.error('Error cleaning up expired podruns:', error);
+                console.error('Error cleaning up podruns:', error);
                 return false;
             }
 
             return true;
         } catch (error) {
-            console.error('Error cleaning up expired podruns:', error);
+            console.error('Error cleaning up podruns:', error);
             return false;
         }
     }
