@@ -240,18 +240,51 @@ export class PodrunService {
 
     async cleanupExpiredPodruns(podrunKey?: string): Promise<boolean> {
         try {
-            let query = db.getClient()
+            // First, get expired podrun IDs
+            let expiredPodrunsQuery = db.getClient()
                 .from('podruns')
-                .update({ status: 'completed' })
-                .lt('run_time', new Date().toISOString())
-                .eq('status', 'active');
+                .select('id')
+                .lt('run_time', new Date().toISOString());
 
-            // If specific podrun key provided, only clean up that one
             if (podrunKey) {
-                query = query.eq('podrun_key', podrunKey);
+                expiredPodrunsQuery = expiredPodrunsQuery.eq('podrun_key', podrunKey);
             }
 
-            const { error } = await query;
+            const { data: expiredPodruns, error: selectError } = await expiredPodrunsQuery;
+
+            if (selectError) {
+                console.error('Error finding expired podruns:', selectError);
+                return false;
+            }
+
+            if (!expiredPodruns || expiredPodruns.length === 0) {
+                return true; // No expired podruns to clean up
+            }
+
+            const expiredPodrunIds = expiredPodruns.map(p => p.id);
+
+            // Delete participants of expired podruns
+            const { error: participantsError } = await db.getClient()
+                .from('podrun_participants')
+                .delete()
+                .in('podrun_id', expiredPodrunIds);
+
+            if (participantsError) {
+                console.error('Error deleting expired podrun participants:', participantsError);
+                // Continue anyway to try to delete the podruns themselves
+            }
+
+            // Then delete the expired podruns themselves
+            let deleteQuery = db.getClient()
+                .from('podruns')
+                .delete()
+                .lt('run_time', new Date().toISOString());
+
+            if (podrunKey) {
+                deleteQuery = deleteQuery.eq('podrun_key', podrunKey);
+            }
+
+            const { error } = await deleteQuery;
 
             if (error) {
                 console.error('Error cleaning up expired podruns:', error);
