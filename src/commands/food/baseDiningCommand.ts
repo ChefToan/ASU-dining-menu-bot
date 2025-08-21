@@ -281,7 +281,22 @@ export class BaseDiningCommand {
         });
 
         collector.on('collect', async (buttonInteraction: ButtonInteraction) => {
-            await this.handleButtonInteraction(buttonInteraction, eventId, eventKey, creator, embed, row, collector);
+            try {
+                console.log(`[${this.config.name}] Collector received button interaction: ${buttonInteraction.customId}`);
+                await this.handleButtonInteraction(buttonInteraction, eventId, eventKey, creator, embed, row, collector);
+            } catch (error) {
+                console.error(`[${this.config.name}] Error in collector button handler:`, error);
+                try {
+                    if (!buttonInteraction.replied && !buttonInteraction.deferred) {
+                        await buttonInteraction.reply({
+                            content: 'An error occurred processing your request. Please try again.',
+                            ephemeral: true
+                        });
+                    }
+                } catch (replyError) {
+                    console.error(`[${this.config.name}] Could not send error reply:`, replyError);
+                }
+            }
         });
 
         // Set timeout for meal time using Node.js setTimeout directly
@@ -306,10 +321,13 @@ export class BaseDiningCommand {
         console.log(`[${this.config.name}] Timeout ID created: ${timeoutId}`);
 
         // Cleanup on collector end
-        collector.on('end', (reason: string) => {
-            console.log(`[${this.config.name}] Collector ended: ${reason}`);
+        collector.on('end', (collected: any, reason: string) => {
+            console.log(`[${this.config.name}] Collector ended with reason: "${reason}", collected: ${collected?.size || 'unknown'} interactions`);
             // Clear timeout if collector ends early
-            clearTimeout(timeoutId);
+            if (reason !== 'meal_time_reached') {
+                console.log(`[${this.config.name}] Clearing timeout due to early collector end`);
+                clearTimeout(timeoutId);
+            }
         });
     }
 
@@ -329,9 +347,13 @@ export class BaseDiningCommand {
             console.log(`[${this.config.name}] Button interaction: ${buttonInteraction.customId} by user ${userId}`);
 
         if (buttonInteraction.customId === `${this.config.mealType}_yes`) {
-            await diningEventService.addParticipant(eventId, userId, user.username, 'attendee');
+            console.log(`[${this.config.name}] Adding user ${userId} as attendee to event ${eventId}`);
+            const success = await diningEventService.addParticipant(eventId, userId, user.username, 'attendee');
+            console.log(`[${this.config.name}] Add participant result:`, success);
         } else if (buttonInteraction.customId === `${this.config.mealType}_no`) {
-            await diningEventService.addParticipant(eventId, userId, user.username, 'declined');
+            console.log(`[${this.config.name}] Adding user ${userId} as declined to event ${eventId}`);
+            const success = await diningEventService.addParticipant(eventId, userId, user.username, 'declined');
+            console.log(`[${this.config.name}] Add participant result:`, success);
         } else if (buttonInteraction.customId === `${this.config.mealType}_cancel`) {
             // Get event data to verify creator
             const eventData = await diningEventService.getDiningEvent(eventKey);
@@ -378,9 +400,15 @@ export class BaseDiningCommand {
         }
 
         // Update embed with new participation data
+        console.log(`[${this.config.name}] Retrieving event data for embed update`);
         const eventData = await diningEventService.getDiningEvent(eventKey);
-        if (!eventData) return;
+        if (!eventData) {
+            console.error(`[${this.config.name}] No event data found for key: ${eventKey}`);
+            return;
+        }
 
+        console.log(`[${this.config.name}] Event data retrieved - Attendees: ${eventData.attendees.size}, Declined: ${eventData.declined.size}`);
+        
         const attendeesText = eventData.attendees.size > 0
             ? Array.from(eventData.attendees.keys()).map(userId => `<@${userId}>`).join('\n')
             : '\u200B';
@@ -388,6 +416,8 @@ export class BaseDiningCommand {
         const declinedText = eventData.declined.size > 0
             ? Array.from(eventData.declined.keys()).map(userId => `<@${userId}>`).join('\n')
             : '\u200B';
+            
+        console.log(`[${this.config.name}] Attendees text: "${attendeesText}", Declined text: "${declinedText}"`);
 
         const updatedEmbed = EmbedBuilder.from(embed)
             .setFields(
@@ -403,6 +433,7 @@ export class BaseDiningCommand {
                 }
             );
 
+            console.log(`[${this.config.name}] Updating interaction with new embed...`);
             await buttonInteraction.update({
                 embeds: [updatedEmbed],
                 components: [row]
