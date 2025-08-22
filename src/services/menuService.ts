@@ -5,6 +5,21 @@ import { DINING_HALLS } from '../utils/config';
 
 const ASU_MENU_API_URL = 'https://asu.campusdish.com/api/menu/GetMenus';
 
+// Create optimized axios instance with connection pooling
+const apiClient = axios.create({
+    baseURL: ASU_MENU_API_URL,
+    timeout: 10000,
+    headers: {
+        'User-Agent': 'ASU-Dining-Bot/1.0',
+        'Accept': 'application/json',
+        'Accept-Encoding': 'gzip, deflate',
+        'Connection': 'keep-alive'
+    },
+    // Enable HTTP keep-alive for connection reuse
+    httpAgent: new (require('http').Agent)({ keepAlive: true, maxSockets: 5 }),
+    httpsAgent: new (require('https').Agent)({ keepAlive: true, maxSockets: 5 })
+});
+
 // Circuit breaker state
 class CircuitBreaker {
     private failureCount = 0;
@@ -87,21 +102,15 @@ export class MenuService {
                 }
             });
 
-            // Retry logic for API calls with exponential backoff
+            // Optimized retry logic with faster timeouts and backoff
             let response;
             let lastError;
-            const maxRetries = 3; // Increased retries
+            const maxRetries = 2; // Reduced retries for speed
             
             for (let attempt = 0; attempt <= maxRetries; attempt++) {
                 try {
-                    response = await axios.get(ASU_MENU_API_URL, { 
-                        params: queryParams,
-                        timeout: 30000, // Increased to 30 second timeout
-                        headers: {
-                            'User-Agent': 'ASU-Dining-Bot/1.0',
-                            'Accept': 'application/json',
-                            'Accept-Encoding': 'gzip, deflate'
-                        }
+                    response = await apiClient.get('', { 
+                        params: queryParams
                     });
                     // Success - record it and break
                     circuitBreaker.recordSuccess();
@@ -109,8 +118,8 @@ export class MenuService {
                 } catch (error) {
                     lastError = error;
                     if (attempt < maxRetries) {
-                        // Exponential backoff: 3s, 9s, 27s
-                        const delay = 3000 * Math.pow(3, attempt);
+                        // Faster backoff: 1s, 2s
+                        const delay = 1000 * (attempt + 1);
                         console.log(`[MenuService] API call failed (attempt ${attempt + 1}/${maxRetries + 1}), retrying in ${delay/1000}s...`);
                         await new Promise(resolve => setTimeout(resolve, delay));
                     }
@@ -153,8 +162,13 @@ export class MenuService {
             return;
         }
         
+        // Get current date in Arizona timezone
         const today = new Date();
-        const dateString = `${today.getMonth() + 1}/${today.getDate()}/${today.getFullYear()}`;
+        const arizonaDateStr = today.toLocaleDateString("en-CA", {timeZone: "America/Phoenix"}); // YYYY-MM-DD format
+        const [year, month, day] = arizonaDateStr.split('-').map(num => parseInt(num, 10));
+        const dateString = `${month}/${day}/${year}`;
+        
+        console.log(`[MenuService] Using Arizona date for preload: ${dateString} (Arizona time: ${today.toLocaleString('en-US', {timeZone: 'America/Phoenix'})})`);
         
         let successCount = 0;
         let failureCount = 0;
@@ -179,29 +193,46 @@ export class MenuService {
                 console.error(`[MenuService] Failed to preload general menu for ${hallKey}:`, error);
             }
 
-            // Small delay between general and period requests
-            await new Promise(resolve => setTimeout(resolve, 1000));
+            // Reduced delay between general and period requests
+            await new Promise(resolve => setTimeout(resolve, 300));
 
-            // Preload common meal periods
+            // Preload common meal periods with parallel processing
             const commonPeriods = ["980", "981", "3080", "982"]; // Breakfast, Lunch, Light Lunch, Dinner
-            for (const periodId of commonPeriods) {
+            
+            // Process periods in parallel for faster loading
+            const periodPromises = commonPeriods.map(async (periodId) => {
                 try {
                     await this.preloadMenuForHall(hallConfig.id, dateString, periodId);
-                    successCount++;
+                    return { success: true, hallKey, periodId };
                 } catch (error) {
-                    failureCount++;
-                    const errorMsg = `${hallKey} (period ${periodId})`;
-                    failures.push(errorMsg);
                     console.error(`[MenuService] Failed to preload ${hallKey} period ${periodId}:`, error);
+                    return { success: false, hallKey, periodId, error };
                 }
+            });
 
-                // Delay between period requests to avoid overwhelming API
-                await new Promise(resolve => setTimeout(resolve, 2000));
-            }
+            // Wait for all periods to complete
+            const periodResults = await Promise.allSettled(periodPromises);
+            
+            // Count results
+            periodResults.forEach((result, index) => {
+                if (result.status === 'fulfilled') {
+                    if (result.value.success) {
+                        successCount++;
+                    } else {
+                        failureCount++;
+                        const errorMsg = `${hallKey} (period ${commonPeriods[index]})`;
+                        failures.push(errorMsg);
+                    }
+                } else {
+                    failureCount++;
+                    const errorMsg = `${hallKey} (period ${commonPeriods[index]})`;
+                    failures.push(errorMsg);
+                }
+            });
 
-            // Longer delay between dining halls
+            // Reduced delay between dining halls
             if (Object.keys(DINING_HALLS).indexOf(hallKey) < Object.keys(DINING_HALLS).length - 1) {
-                await new Promise(resolve => setTimeout(resolve, 3000));
+                await new Promise(resolve => setTimeout(resolve, 500));
             }
         }
         
