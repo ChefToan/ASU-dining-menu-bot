@@ -96,7 +96,7 @@ export async function execute(interaction: CommandInteraction) {
 
 // Set up interaction handlers for the menu command
 async function setupInteractionHandlers(
-    interaction: CommandInteraction,
+    interaction: CommandInteraction | ButtonInteraction,
     diningHall: any,
     formattedDate: string,
     displayName: string,
@@ -150,7 +150,7 @@ async function setupInteractionHandlers(
     });
 
     collector.on('end', () => {
-        handleCollectorEnd(interaction);
+        handleCollectorEnd(interaction, diningHall, displayName, formattedDisplayDate);
     });
 }
 
@@ -348,6 +348,18 @@ async function handleRefresh(
             embeds: [mainEmbed],
             components: periodButtons
         });
+
+        // Set up interaction handling again after refresh
+        await setupInteractionHandlers(
+            buttonInteraction,
+            diningHall,
+            formattedDate,
+            displayName,
+            formattedDisplayDate,
+            availablePeriods,
+            mainEmbed,
+            periodButtons
+        );
     } catch (error) {
         console.error('Error refreshing menu:', error);
         await buttonInteraction.followUp({
@@ -358,12 +370,36 @@ async function handleRefresh(
 }
 
 // Handle collector end
-function handleCollectorEnd(interaction: CommandInteraction) {
+async function handleCollectorEnd(
+    interaction: CommandInteraction | ButtonInteraction,
+    diningHall: any,
+    displayName: string,
+    formattedDisplayDate: string
+) {
     try {
         if (interaction.replied || interaction.deferred) {
             const refreshRow = createRefreshButton();
-            interaction.editReply({ components: [refreshRow] })
+            await interaction.editReply({ components: [refreshRow] })
                 .catch(error => console.error('Error adding refresh button:', error));
+            
+            // Set up a new collector specifically for the refresh button
+            const message = await interaction.fetchReply();
+            const refreshCollector = message.createMessageComponentCollector({
+                componentType: ComponentType.Button,
+                time: MENU_CONFIG.REFRESH_TIMEOUT,
+                filter: (buttonInteraction) => buttonInteraction.customId === 'refresh_menu'
+            });
+
+            refreshCollector.on('collect', async (buttonInteraction: ButtonInteraction) => {
+                await buttonInteraction.deferUpdate();
+                await handleRefresh(buttonInteraction, diningHall, displayName, formattedDisplayDate);
+            });
+
+            refreshCollector.on('end', () => {
+                // Remove all components when refresh timeout expires
+                interaction.editReply({ components: [] })
+                    .catch(error => console.error('Error removing components:', error));
+            });
         }
     } catch (error) {
         console.error('Error in collector end handler:', error);
