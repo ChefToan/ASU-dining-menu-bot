@@ -118,7 +118,7 @@ async function setupInteractionHandlers(
         await buttonInteraction.deferUpdate();
 
         if (buttonInteraction.customId === 'refresh_menu') {
-            await handleRefresh(buttonInteraction, mainEmbed, periodButtons);
+            await handleRefresh(buttonInteraction, diningHall, displayName, formattedDisplayDate);
         } else if (buttonInteraction.customId.startsWith('period_')) {
             await handlePeriodSelection(
                 buttonInteraction, 
@@ -309,11 +309,52 @@ async function handleStationSelection(
 }
 
 // Handle refresh button
-async function handleRefresh(buttonInteraction: ButtonInteraction, mainEmbed: any, periodButtons: any[]) {
-    await buttonInteraction.editReply({
-        embeds: [mainEmbed],
-        components: periodButtons
-    });
+async function handleRefresh(
+    buttonInteraction: ButtonInteraction, 
+    diningHall: any,
+    displayName: string,
+    formattedDisplayDate: string
+) {
+    try {
+        // Re-fetch menu data with current date to get updated periods
+        const { formattedDate } = formatDateForAPI();
+        
+        const menuData = await fetchMenu({
+            mode: 'Daily',
+            locationId: diningHall.id,
+            date: formattedDate,
+            periodId: ""
+        });
+
+        if (!menuData.Menu?.MenuPeriods?.length) {
+            const errorMsg = formatMessage(MENU_CONFIG.MESSAGES.NO_MENU_AVAILABLE, {
+                diningHall: displayName,
+                date: formattedDate
+            });
+            await buttonInteraction.editReply({
+                content: errorMsg,
+                embeds: [],
+                components: []
+            });
+            return;
+        }
+
+        // Parse updated periods and recreate UI
+        const availablePeriods = parsePeriods(menuData.Menu.MenuPeriods);
+        const mainEmbed = createMainEmbed(displayName, formattedDisplayDate);
+        const periodButtons = createPeriodButtons(availablePeriods);
+
+        await buttonInteraction.editReply({
+            embeds: [mainEmbed],
+            components: periodButtons
+        });
+    } catch (error) {
+        console.error('Error refreshing menu:', error);
+        await buttonInteraction.followUp({
+            content: 'Failed to refresh menu. Please try again.',
+            ephemeral: true
+        });
+    }
 }
 
 // Handle collector end
