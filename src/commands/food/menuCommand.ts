@@ -397,8 +397,19 @@ async function handleCollectorEnd(
 
             refreshCollector.on('end', () => {
                 // Remove all components when refresh timeout expires
-                interaction.editReply({ components: [] })
-                    .catch(error => console.error('Error removing components:', error));
+                // Only attempt if within Discord's 15-minute interaction token limit
+                const timeSinceInteraction = Date.now() - (interaction.createdTimestamp || 0);
+                const fifteenMinutes = 15 * 60 * 1000;
+                
+                if (timeSinceInteraction < fifteenMinutes) {
+                    interaction.editReply({ components: [] })
+                        .catch(error => {
+                            // Silently handle token expiry errors as they're expected
+                            if (error.code !== 50027) {
+                                console.error('Error removing components:', error);
+                            }
+                        });
+                }
             });
         }
     } catch (error) {

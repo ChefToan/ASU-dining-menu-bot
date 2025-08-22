@@ -1,0 +1,111 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+
+jobs:
+  # Continuous Integration Job
+  ci:
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Type check
+      run: npm run typecheck
+    
+    - name: Build project
+      run: npm run build
+    
+    - name: Run tests (if available)
+      run: npm test --if-present
+    
+    # Upload build artifacts for deployment
+    - name: Upload build artifacts
+      if: matrix.node-version == '20.x' && github.ref == 'refs/heads/master'
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-files
+        path: |
+          dist/
+          package.json
+          package-lock.json
+        retention-days: 1
+
+  # Continuous Deployment Job
+  deploy:
+    needs: ci
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/master' && github.event_name == 'push'
+    
+    steps:
+    - name: Download build artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: build-files
+    
+    - name: Deploy to Ubuntu Server
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.SERVER_HOST }}
+        username: ${{ secrets.SERVER_USER }}
+        key: ${{ secrets.SERVER_SSH_KEY }}
+        port: ${{ secrets.SERVER_PORT || 22 }}
+        script: |
+          # Navigate to bot directory
+          cd ${{ secrets.DEPLOY_PATH || '/home/${{ secrets.SERVER_USER }}/asu-dining-bot' }}
+          
+          # Stop the bot (using PM2 or systemd)
+          sudo systemctl stop asu-dining-bot || pm2 stop asu-dining-bot || echo "Bot not running"
+          
+          # Backup current deployment
+          cp -r dist dist.backup.$(date +%Y%m%d_%H%M%S) || echo "No previous build to backup"
+          
+          # Pull latest code
+          git pull origin master
+          
+          # Install/update dependencies
+          npm ci --production
+          
+          # Build the project
+          npm run build
+          
+          # Start the bot
+          sudo systemctl start asu-dining-bot || pm2 start ecosystem.config.js || npm start
+          
+          # Verify deployment
+          sleep 5
+          sudo systemctl status asu-dining-bot || pm2 status || echo "Manual verification needed"
+
+  # Optional: Notify on deployment status
+  notify:
+    needs: [ci, deploy]
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+    - name: Deployment Status
+      run: |
+        if [ "${{ needs.deploy.result }}" == "success" ]; then
+          echo "✅ Deployment successful!"
+        else
+          echo "❌ Deployment failed!"
+          exit 1
+        fi

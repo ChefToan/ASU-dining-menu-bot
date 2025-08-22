@@ -1,0 +1,29 @@
+# Example systemd service file for ASU Dining Bot
+# Copy this file to /etc/systemd/system/asu-dining-bot.service
+# Update paths and user as needed
+
+[Unit]
+Description=ASU Dining Menu Discord Bot
+After=network.target
+
+[Service]
+Type=simple
+User=your-username
+WorkingDirectory=/path/to/asu-dining-menu-bot
+ExecStart=/usr/bin/node dist/index.js
+Restart=on-failure
+RestartSec=5
+Environment=NODE_ENV=production
+
+# Logging
+StandardOutput=append:/var/log/asu-dining-bot/out.log
+StandardError=append:/var/log/asu-dining-bot/error.log
+
+# Security
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/path/to/asu-dining-menu-bot
+
+[Install]
+WantedBy=multi-user.target
