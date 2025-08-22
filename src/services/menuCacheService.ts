@@ -28,19 +28,46 @@ export class MenuCacheService {
      */
     static async get(cacheKey: string): Promise<MenuResponse | null> {
         try {
-            const { data, error } = await db.getClient()
+            // Get all cache entries for this key (expired and non-expired)
+            const { data: allEntries, error } = await db.getClient()
                 .from('cache_entries')
                 .select('data, expires_at')
-                .eq('cache_key', cacheKey)
-                .gt('expires_at', new Date().toISOString()) // Only get non-expired entries
-                .single();
+                .eq('cache_key', cacheKey);
 
-            if (error || !data) {
+            if (error || !allEntries || allEntries.length === 0) {
                 return null;
             }
 
-            console.log(`[MenuCache] Cache HIT for key: ${cacheKey}`);
-            return data.data as MenuResponse;
+            const now = new Date();
+            let validEntry = null;
+            const expiredEntries = [];
+
+            // Check each entry and separate valid from expired
+            for (const entry of allEntries) {
+                const expiresAt = new Date(entry.expires_at);
+                if (expiresAt > now) {
+                    validEntry = entry;
+                } else {
+                    expiredEntries.push(entry);
+                }
+            }
+
+            // Clean up expired entries immediately
+            if (expiredEntries.length > 0) {
+                await db.getClient()
+                    .from('cache_entries')
+                    .delete()
+                    .eq('cache_key', cacheKey)
+                    .lt('expires_at', now.toISOString());
+                console.log(`[MenuCache] Cleaned up ${expiredEntries.length} expired entries for key: ${cacheKey}`);
+            }
+
+            if (validEntry) {
+                console.log(`[MenuCache] Cache HIT for key: ${cacheKey}`);
+                return validEntry.data as MenuResponse;
+            }
+
+            return null;
         } catch (error) {
             console.error('[MenuCache] Error retrieving from cache:', error);
             return null;
@@ -112,10 +139,28 @@ export class MenuCacheService {
      */
     static async cleanupExpired(): Promise<number> {
         try {
+            // Get current time with some buffer to avoid timezone issues
+            const now = new Date();
+            const cutoffTime = new Date(now.getTime() - 60000).toISOString(); // 1 minute buffer
+            
+            // First, get count of entries to be deleted for logging
+            const { count } = await db.getClient()
+                .from('cache_entries')
+                .select('*', { count: 'exact', head: true })
+                .like('cache_key', 'menu_%')
+                .lt('expires_at', cutoffTime);
+
+            if (!count || count === 0) {
+                console.log('[MenuCache] No expired cache entries to clean up');
+                return 0;
+            }
+
+            // Delete expired entries
             const { data: deletedEntries, error } = await db.getClient()
                 .from('cache_entries')
                 .delete()
-                .lt('expires_at', new Date().toISOString())
+                .like('cache_key', 'menu_%')
+                .lt('expires_at', cutoffTime)
                 .select('cache_key');
 
             if (error) {
@@ -124,9 +169,7 @@ export class MenuCacheService {
             }
 
             const deletedCount = deletedEntries?.length || 0;
-            if (deletedCount > 0) {
-                console.log(`[MenuCache] Cleaned up ${deletedCount} expired cache entries`);
-            }
+            console.log(`[MenuCache] Cleaned up ${deletedCount} expired cache entries (cutoff: ${cutoffTime})`);
             
             return deletedCount;
         } catch (error) {

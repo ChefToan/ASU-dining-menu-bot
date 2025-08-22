@@ -146,17 +146,14 @@ export function formatDateForDisplay(date: Date): string {
     return `${month}/${day}/${year} (${weekday})`;
 }
 
-// Helper function to get current date in Arizona MST timezone
-function getArizonaMSTDate(): Date {
-    // Get current date/time in Arizona timezone
+// Helper function to get current date components in Arizona MST timezone
+function getArizonaDateComponents(): { month: number, day: number, year: number } {
+    // Get current date in Arizona timezone directly as components
     const now = new Date();
     const arizonaDateStr = now.toLocaleDateString("en-CA", {timeZone: "America/Phoenix"}); // YYYY-MM-DD format
-    const arizonaTimeStr = now.toLocaleTimeString("en-GB", {timeZone: "America/Phoenix", hour12: false}); // HH:MM:SS format
+    const [year, month, day] = arizonaDateStr.split('-').map(num => parseInt(num, 10));
     
-    // Create ISO string for Arizona timezone (MST is UTC-7)
-    const isoString = `${arizonaDateStr}T${arizonaTimeStr}.000-07:00`;
-    
-    return new Date(isoString);
+    return { month, day, year };
 }
 
 // Helper function to format date for API
@@ -174,9 +171,9 @@ export function formatDateForAPI(date?: string): { formattedDate: string, displa
         displayDate = new Date(year, month - 1, day);
     } else {
         // Get current date in Arizona MST timezone
-        const arizonaMSTDate = getArizonaMSTDate();
-        displayDate = arizonaMSTDate;
-        formattedDate = `${arizonaMSTDate.getMonth() + 1}/${arizonaMSTDate.getDate()}/${arizonaMSTDate.getFullYear()}`;
+        const { month, day, year } = getArizonaDateComponents();
+        displayDate = new Date(year, month - 1, day);
+        formattedDate = `${month}/${day}/${year}`;
     }
 
     return { formattedDate, displayDate };

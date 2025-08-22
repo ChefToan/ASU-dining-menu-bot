@@ -7,8 +7,8 @@ export class MenuScheduler {
     // Preload every 6 hours
     private static readonly PRELOAD_INTERVAL = 6 * 60 * 60 * 1000; // 6 hours
     
-    // Cleanup every 24 hours
-    private static readonly CLEANUP_INTERVAL = 24 * 60 * 60 * 1000; // 24 hours
+    // Cleanup every 2 hours for more aggressive expired entry cleanup
+    private static readonly CLEANUP_INTERVAL = 2 * 60 * 60 * 1000; // 2 hours
 
     /**
      * Start the menu refresh scheduler
@@ -29,7 +29,10 @@ export class MenuScheduler {
             this.runCleanup();
         }, MenuScheduler.CLEANUP_INTERVAL);
 
-        console.log('[MenuScheduler] Scheduler started - preloading every 6 hours, cleanup every 24 hours');
+        // Run initial cleanup
+        this.runCleanup();
+        
+        console.log('[MenuScheduler] Scheduler started - preloading every 6 hours, cleanup every 2 hours');
     }
 
     /**
