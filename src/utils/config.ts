@@ -76,7 +76,7 @@ export const MENU_CONFIG = {
     ],
 
     // Collector timeouts
-    INTERACTION_TIMEOUT: 1 * 60 * 1000, // 1 minute
+    INTERACTION_TIMEOUT: 10 * 60 * 1000, // 10 minutes
     REFRESH_TIMEOUT: 60 * 60 * 1000, // 1 hour
 
     // Button limits
