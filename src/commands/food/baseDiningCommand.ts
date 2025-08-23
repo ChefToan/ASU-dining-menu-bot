@@ -10,7 +10,6 @@ import {
     ButtonInteraction,
     TextChannel,
     User,
-    InteractionCollector,
     StringSelectMenuBuilder,
     StringSelectMenuInteraction
 } from 'discord.js';
@@ -26,8 +25,21 @@ export interface MealConfig {
     mealType: 'breakfast' | 'lunch' | 'light_lunch' | 'dinner' | 'brunch';
 }
 
+interface EventState {
+    eventKey: string;
+    creator: User;
+    mealType: string;
+    mealTime: Date;
+    diningHall?: string;
+    attendees: Set<string>;
+    declined: Set<string>;
+    messageId?: string;
+    timeoutId?: NodeJS.Timeout;
+}
+
 export class BaseDiningCommand {
     protected config: MealConfig;
+    private static eventCache = new Map<string, EventState>();
 
     constructor(config: MealConfig) {
         this.config = config;
@@ -71,13 +83,10 @@ export class BaseDiningCommand {
             const channelId = interaction.channelId!;
             const guildId = interaction.guildId!;
 
-            // Parse date and time first (time is always required)
+            // Parse date and time
             const { success, error, mealTime } = await this.parseDateTime(dateInput, timeInput);
             if (!success) {
-                await interaction.reply({
-                    content: error,
-                    ephemeral: true
-                });
+                await interaction.reply({ content: error, ephemeral: true });
                 return;
             }
 
@@ -91,8 +100,7 @@ export class BaseDiningCommand {
             }
 
             // Check if time is in the past
-            const nowMST = diningEventService.getMSTNow();
-            if (mealTime! <= nowMST) {
+            if (mealTime! <= diningEventService.getMSTNow()) {
                 await interaction.reply({
                     content: 'The specified time has already passed. Please choose a future time.',
                     ephemeral: true
@@ -100,192 +108,233 @@ export class BaseDiningCommand {
                 return;
             }
 
-            // Check for existing event
+            // Create event key
             const eventKey = `${guildId}-${channelId}-${this.config.mealType}-${mealTime!.toDateString()}`;
-            if (await diningEventService.diningEventExists(eventKey)) {
+            
+            // Check for existing event in cache first
+            if (BaseDiningCommand.eventCache.has(eventKey)) {
                 await interaction.reply({
-                    content: `There's already an active ${this.config.name.toLowerCase()} event in this channel for that day! Wait for it to finish before starting a new one.`,
+                    content: `There's already an active ${this.config.name.toLowerCase()} event in this channel for that day!`,
                     ephemeral: true
                 });
                 return;
             }
 
-            // If dining hall is provided, use it directly
-            if (diningHallOption) {
-                const diningHall = DINING_HALLS[diningHallOption as keyof typeof DINING_HALLS];
-                if (!diningHall) {
-                    await interaction.reply({
-                        content: 'Invalid dining hall selected.',
-                        ephemeral: true
-                    });
-                    return;
-                }
-                
-                // Create and send the event directly
-                await this.createAndSendEvent(interaction, diningHall, diningHallOption, mealTime!, eventKey, creator, guildId, channelId);
-            } else {
-                // Prompt user to select dining hall
-                await this.promptDiningHallSelection(interaction, mealTime!, eventKey, creator, guildId, channelId);
+            // Create event in database
+            const eventId = await diningEventService.createDiningEvent(
+                eventKey, creator, guildId, channelId, this.config.mealType,
+                diningHallOption || 'unspecified', diningEventService.getMSTNow(), mealTime!
+            );
+
+            if (!eventId) {
+                await interaction.reply({
+                    content: `Failed to create ${this.config.name.toLowerCase()} event. Please try again.`,
+                    ephemeral: true
+                });
+                return;
             }
+
+            // Create event state in cache
+            const eventState: EventState = {
+                eventKey,
+                creator,
+                mealType: this.config.mealType,
+                mealTime: mealTime!,
+                diningHall: diningHallOption,
+                attendees: new Set([creator.id]),
+                declined: new Set()
+            };
+
+            BaseDiningCommand.eventCache.set(eventKey, eventState);
+
+            await this.createEvent(interaction, eventState);
 
         } catch (error) {
             await this.handleError(interaction, error);
         }
     }
 
-    private async promptDiningHallSelection(
-        interaction: CommandInteraction,
-        mealTime: Date,
-        eventKey: string,
-        creator: User,
-        guildId: string,
-        channelId: string
-    ): Promise<void> {
-        // Format time for display
-        const mstMealTime = diningEventService.toMST(mealTime);
-        const timeString = mstMealTime.toLocaleTimeString('en-US', {
-            hour: 'numeric',
-            minute: '2-digit',
-            hour12: true,
-            timeZone: 'America/Phoenix'
-        }).toLowerCase();
+    private async createEvent(interaction: CommandInteraction, eventState: EventState): Promise<void> {
+        const { embed, buttons } = this.buildEventMessage(eventState, eventState.creator.id);
 
-        const dateString = mstMealTime.toLocaleDateString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            year: 'numeric',
-            timeZone: 'America/Phoenix'
-        });
-
-        // Create dining hall selection menu
-        const selectMenu = new StringSelectMenuBuilder()
-            .setCustomId(`${this.config.mealType}_dining_hall_select`)
-            .setPlaceholder('Choose a dining hall...')
-            .addOptions([
-                {
-                    label: 'Barrett',
-                    value: 'barrett',
-                    description: 'Barrett Dining Hall'
-                },
-                {
-                    label: 'Manzi',
-                    value: 'manzi',
-                    description: 'Manzi Dining Hall'
-                },
-                {
-                    label: 'Hassay',
-                    value: 'hassay',
-                    description: 'Hassay Dining Hall'
-                },
-                {
-                    label: 'Tooker',
-                    value: 'tooker',
-                    description: 'Tooker House Dining'
-                },
-                {
-                    label: 'MU (Pitchforks)',
-                    value: 'mu',
-                    description: 'Memorial Union (Pitchforks)'
-                },
-                {
-                    label: 'HIDA',
-                    value: 'hida',
-                    description: 'HIDA Dining Hall'
-                }
-            ]);
-
-        const row = new ActionRowBuilder<StringSelectMenuBuilder>()
-            .addComponents(selectMenu);
-
-        // Create temporary embed
-        const embed = new EmbedBuilder()
-            .setColor(this.config.color)
-            .setDescription(`**${this.config.name} at ${timeString}** (${dateString})\n\nPlease select which dining hall you'd like to meet at:`);
+        const row = new ActionRowBuilder<ButtonBuilder>().addComponents(buttons);
 
         await interaction.reply({
             embeds: [embed],
-            components: [row],
-            ephemeral: false
+            components: [row]
         });
 
-        // Create collector for dining hall selection
         const message = await interaction.fetchReply();
+        eventState.messageId = message.id;
+
+        // Set up timeout for meal time
+        const now = diningEventService.getMSTNow();
+        const timeoutDuration = Math.min(Math.max(eventState.mealTime.getTime() - now.getTime(), 1000), 24 * 60 * 60 * 1000);
+
+        eventState.timeoutId = setTimeout(async () => {
+            await this.handleMealTimeReached(interaction, eventState);
+        }, timeoutDuration);
+
+        // Set up button collector
         const collector = message.createMessageComponentCollector({
-            componentType: ComponentType.StringSelect,
-            time: 60000 // 1 minute timeout
+            componentType: ComponentType.Button,
+            time: timeoutDuration
         });
 
-        collector.on('collect', async (selectInteraction: StringSelectMenuInteraction) => {
-            try {
-                // Only allow the original user to select
-                if (selectInteraction.user.id !== creator.id) {
-                    await selectInteraction.reply({
+        collector.on('collect', async (buttonInteraction: ButtonInteraction) => {
+            await this.handleButtonClick(buttonInteraction, eventState, interaction);
+        });
+
+        collector.on('end', () => {
+            if (eventState.timeoutId) {
+                clearTimeout(eventState.timeoutId);
+            }
+        });
+    }
+
+    private async handleButtonClick(
+        buttonInteraction: ButtonInteraction,
+        eventState: EventState,
+        originalInteraction: CommandInteraction
+    ): Promise<void> {
+        const userId = buttonInteraction.user.id;
+        const customId = buttonInteraction.customId;
+
+        try {
+            if (customId === `${this.config.mealType}_yes`) {
+                // Ensure user is only in one state
+                eventState.attendees.add(userId);
+                eventState.declined.delete(userId);
+                console.log(`User ${userId} set to attending. Attendees: ${Array.from(eventState.attendees)}, Declined: ${Array.from(eventState.declined)}`);
+                
+                await diningEventService.addParticipant(
+                    await this.getEventId(eventState.eventKey), userId, buttonInteraction.user.username, 'attendee'
+                );
+
+            } else if (customId === `${this.config.mealType}_no`) {
+                // Ensure user is only in one state
+                eventState.declined.add(userId);
+                eventState.attendees.delete(userId);
+                console.log(`User ${userId} set to declined. Attendees: ${Array.from(eventState.attendees)}, Declined: ${Array.from(eventState.declined)}`);
+                
+                await diningEventService.addParticipant(
+                    await this.getEventId(eventState.eventKey), userId, buttonInteraction.user.username, 'declined'
+                );
+
+            } else if (customId === `${this.config.mealType}_select_hall`) {
+                if (userId !== eventState.creator.id) {
+                    await buttonInteraction.reply({
                         content: 'Only the event creator can select the dining hall.',
                         ephemeral: true
                     });
                     return;
                 }
 
-                const selectedDiningHall = selectInteraction.values[0];
-                const diningHall = DINING_HALLS[selectedDiningHall as keyof typeof DINING_HALLS];
+                // Just show dining hall selection - don't change attendance status
 
-                if (!diningHall) {
-                    await selectInteraction.reply({
-                        content: 'Invalid dining hall selected.',
+                await this.showDiningHallSelection(buttonInteraction, eventState, originalInteraction);
+                return;
+
+            } else if (customId === `${this.config.mealType}_cancel`) {
+                if (userId !== eventState.creator.id) {
+                    await buttonInteraction.reply({
+                        content: `Only the event creator can cancel this ${this.config.name.toLowerCase()} event.`,
                         ephemeral: true
                     });
                     return;
                 }
 
-                // Stop the collector
-                collector.stop('dining_hall_selected');
-
-                // Create and send the event
-                await selectInteraction.deferUpdate();
-                await this.createAndSendEventFromSelection(selectInteraction, diningHall, selectedDiningHall, mealTime, eventKey, creator, guildId, channelId);
-
-            } catch (error) {
-                console.error('Error handling dining hall selection:', error);
-                try {
-                    if (!selectInteraction.replied && !selectInteraction.deferred) {
-                        await selectInteraction.reply({
-                            content: 'There was an error processing your selection. Please try again.',
-                            ephemeral: true
-                        });
-                    }
-                } catch (replyError) {
-                    console.error('Could not send error reply:', replyError);
-                }
+                await this.cancelEvent(buttonInteraction, eventState);
+                return;
             }
+
+            // Update message with new state - always build buttons for the creator's perspective
+            const { embed, buttons } = this.buildEventMessage(eventState, eventState.creator.id);
+            const row = new ActionRowBuilder<ButtonBuilder>().addComponents(buttons);
+
+            await buttonInteraction.update({
+                embeds: [embed],
+                components: [row]
+            });
+
+        } catch (error) {
+            console.error('Error handling button click:', error);
+            if (!buttonInteraction.replied && !buttonInteraction.deferred) {
+                await buttonInteraction.reply({
+                    content: 'An error occurred processing your request. Please try again.',
+                    ephemeral: true
+                });
+            }
+        }
+    }
+
+    private async showDiningHallSelection(
+        interaction: ButtonInteraction,
+        eventState: EventState,
+        originalInteraction: CommandInteraction
+    ): Promise<void> {
+        const selectMenu = new StringSelectMenuBuilder()
+            .setCustomId(`${this.config.mealType}_hall_select`)
+            .setPlaceholder('Choose a dining hall...')
+            .addOptions([
+                { label: 'Barrett', value: 'barrett', description: 'Barrett Dining Hall' },
+                { label: 'Manzi', value: 'manzi', description: 'Manzi Dining Hall' },
+                { label: 'Hassay', value: 'hassay', description: 'Hassay Dining Hall' },
+                { label: 'Tooker', value: 'tooker', description: 'Tooker House Dining' },
+                { label: 'MU (Pitchforks)', value: 'mu', description: 'Memorial Union (Pitchforks)' },
+                { label: 'HIDA', value: 'hida', description: 'HIDA Dining Hall' }
+            ]);
+
+        const selectRow = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(selectMenu);
+
+        await interaction.update({
+            embeds: [this.buildEventMessage(eventState, eventState.creator.id).embed],
+            components: [selectRow]
         });
 
-        collector.on('end', async (collected, reason) => {
+        const selectCollector = interaction.message.createMessageComponentCollector({
+            componentType: ComponentType.StringSelect,
+            time: 60000
+        });
+
+        selectCollector.on('collect', async (selectInteraction: StringSelectMenuInteraction) => {
+            if (selectInteraction.user.id !== eventState.creator.id) {
+                await selectInteraction.reply({
+                    content: 'Only the event creator can select the dining hall.',
+                    ephemeral: true
+                });
+                return;
+            }
+
+            eventState.diningHall = selectInteraction.values[0];
+            
+            // Update database
+            await this.updateEventDiningHall(eventState.eventKey, eventState.diningHall);
+
+            const { embed, buttons } = this.buildEventMessage(eventState, eventState.creator.id);
+            const row = new ActionRowBuilder<ButtonBuilder>().addComponents(buttons);
+
+            await selectInteraction.update({
+                embeds: [embed],
+                components: [row]
+            });
+        });
+
+        selectCollector.on('end', async (_, reason) => {
             if (reason === 'time') {
-                try {
-                    await interaction.editReply({
-                        content: `${this.config.name} setup timed out. Please try again.`,
-                        embeds: [],
-                        components: []
-                    });
-                } catch (error) {
-                    console.error('Could not edit reply on timeout:', error);
-                }
+                const { embed, buttons } = this.buildEventMessage(eventState, eventState.creator.id);
+                const row = new ActionRowBuilder<ButtonBuilder>().addComponents(buttons);
+                
+                await interaction.editReply({
+                    embeds: [embed],
+                    components: [row]
+                });
             }
         });
     }
 
-    private async createAndSendEventFromSelection(
-        interaction: StringSelectMenuInteraction,
-        diningHall: any,
-        diningHallOption: string,
-        mealTime: Date,
-        eventKey: string,
-        creator: User,
-        guildId: string,
-        channelId: string
-    ): Promise<void> {
-        // Format time and date for display
-        const mstMealTime = diningEventService.toMST(mealTime);
+    private buildEventMessage(eventState: EventState, currentUserId: string): { embed: EmbedBuilder, buttons: ButtonBuilder[] } {
+        const mstMealTime = diningEventService.toMST(eventState.mealTime);
         const timeString = mstMealTime.toLocaleTimeString('en-US', {
             hour: 'numeric',
             minute: '2-digit',
@@ -300,74 +349,122 @@ export class BaseDiningCommand {
             timeZone: 'America/Phoenix'
         });
 
-        // Create embed
+        // Build title based on dining hall selection
+        let titleText: string;
+        if (eventState.diningHall && eventState.diningHall !== 'unspecified') {
+            const diningHall = DINING_HALLS[eventState.diningHall as keyof typeof DINING_HALLS];
+            titleText = `**${this.config.name} @ ${diningHall.name} at ${timeString}**`;
+        } else {
+            titleText = `**${this.config.name} at ${timeString}**`;
+        }
+
         const embed = new EmbedBuilder()
             .setColor(this.config.color)
-            .setDescription(`**${this.config.name} @ ${diningHall.name} at ${timeString}**\n(${dateString})\n\n${this.config.description}`)
+            .setDescription(`${titleText}\n(${dateString})\n\n${this.config.description}`)
             .addFields(
                 {
                     name: `${this.config.emoji} Attending`,
-                    value: `<@${creator.id}>`,
+                    value: eventState.attendees.size > 0 
+                        ? Array.from(eventState.attendees).map(userId => `<@${userId}>`).join('\n')
+                        : '\u200B',
                     inline: true
                 },
                 {
                     name: '❌ Can\'t Make It',
-                    value: '\u200B',
+                    value: eventState.declined.size > 0
+                        ? Array.from(eventState.declined).map(userId => `<@${userId}>`).join('\n')
+                        : '\u200B',
                     inline: true
                 }
             );
 
-        // Create buttons
-        const row = new ActionRowBuilder<ButtonBuilder>()
-            .addComponents(
+        // Build buttons based on current user and state
+        const buttons = [
+            new ButtonBuilder()
+                .setCustomId(`${this.config.mealType}_yes`)
+                .setEmoji(this.config.emoji)
+                .setLabel('Attending')
+                .setStyle(ButtonStyle.Primary),
+            new ButtonBuilder()
+                .setCustomId(`${this.config.mealType}_no`)
+                .setEmoji('❌')
+                .setLabel('Erm, Naur')
+                .setStyle(ButtonStyle.Secondary)
+        ];
+
+        // Only show "Select Dining Hall" button to creator and only if no hall is selected
+        if (currentUserId === eventState.creator.id && (!eventState.diningHall || eventState.diningHall === 'unspecified')) {
+            buttons.push(
                 new ButtonBuilder()
-                    .setCustomId(`${this.config.mealType}_yes`)
-                    .setEmoji(this.config.emoji)
-                    .setLabel('Attending')
-                    .setStyle(ButtonStyle.Primary),
-                new ButtonBuilder()
-                    .setCustomId(`${this.config.mealType}_no`)
-                    .setEmoji('❌')
-                    .setLabel('Erm, Naur')
-                    .setStyle(ButtonStyle.Secondary),
-                new ButtonBuilder()
-                    .setCustomId(`${this.config.mealType}_cancel`)
-                    .setLabel('Cancel Event')
-                    .setStyle(ButtonStyle.Danger)
+                    .setCustomId(`${this.config.mealType}_select_hall`)
+                    .setEmoji('🍽️')
+                    .setLabel('Choose Dining Hall')
+                    .setStyle(ButtonStyle.Success)
             );
-
-        // Update message with event details
-        await interaction.editReply({
-            embeds: [embed],
-            components: [row]
-        });
-
-        const message = await interaction.fetchReply();
-
-        // Create event in database
-        const startTime = diningEventService.getMSTNow();
-        const eventId = await diningEventService.createDiningEvent(
-            eventKey,
-            creator,
-            guildId,
-            channelId,
-            this.config.mealType,
-            diningHallOption,
-            startTime,
-            mealTime,
-            message.id as string
-        );
-
-        if (!eventId) {
-            await interaction.editReply({
-                content: `Failed to create ${this.config.name.toLowerCase()} event. Please try again.`,
-                components: []
-            });
-            return;
         }
 
-        // Set up event handlers
-        await this.setupEventHandlers({ channel: interaction.channel } as CommandInteraction, message, eventId, eventKey, creator, diningHall, mealTime, startTime, embed, row);
+        buttons.push(
+            new ButtonBuilder()
+                .setCustomId(`${this.config.mealType}_cancel`)
+                .setLabel('Cancel Event')
+                .setStyle(ButtonStyle.Danger)
+        );
+
+        return { embed, buttons };
+    }
+
+    private async cancelEvent(interaction: ButtonInteraction, eventState: EventState): Promise<void> {
+        await diningEventService.cancelDiningEvent(eventState.eventKey);
+        
+        if (eventState.timeoutId) {
+            clearTimeout(eventState.timeoutId);
+        }
+        
+        BaseDiningCommand.eventCache.delete(eventState.eventKey);
+
+        await interaction.update({
+            content: `${this.config.name} event has been cancelled.`,
+            embeds: [],
+            components: []
+        });
+
+        setTimeout(async () => {
+            try {
+                await interaction.message.delete();
+            } catch (error) {
+                console.warn('Could not delete cancelled event message:', error);
+            }
+        }, 3000);
+    }
+
+    private async handleMealTimeReached(interaction: CommandInteraction, eventState: EventState): Promise<void> {
+        const channel = interaction.channel as TextChannel;
+        
+        try {
+            const diningHall = eventState.diningHall && eventState.diningHall !== 'unspecified'
+                ? DINING_HALLS[eventState.diningHall as keyof typeof DINING_HALLS]
+                : { name: 'a dining hall' };
+
+            if (eventState.attendees.size <= 1) {
+                await channel.send(`Womp womp, nobody wanted to get ${this.config.name.toLowerCase()} with <@${eventState.creator.id}> at ${diningHall.name}. Event cancelled!`);
+            } else {
+                const attendeesList = Array.from(eventState.attendees).map(userId => `<@${userId}>`).join(' ');
+                await channel.send(`${this.config.name} time at ${diningHall.name}! ${attendeesList}`);
+            }
+        } catch (error) {
+            console.error('Error sending meal time notification:', error);
+        }
+
+        // Clean up
+        await diningEventService.completeDiningEvent(eventState.eventKey);
+        BaseDiningCommand.eventCache.delete(eventState.eventKey);
+
+        try {
+            const message = await interaction.fetchReply();
+            await message.delete();
+        } catch (error) {
+            console.warn('Could not delete completed event message:', error);
+        }
     }
 
     private async parseDateTime(dateInput: string | undefined, timeInput: string): Promise<{
@@ -376,12 +473,9 @@ export class BaseDiningCommand {
         mealTime?: Date;
     }> {
         try {
-            // Parse the date (defaults to today if not provided)
             const targetDate = diningEventService.parseDate(dateInput);
-            
-            // Parse the time and apply to the target date
             const mealTime = diningEventService.parseTime(timeInput, targetDate);
-            
+
             if (!mealTime) {
                 return {
                     success: false,
@@ -398,387 +492,28 @@ export class BaseDiningCommand {
         }
     }
 
-    private async createAndSendEvent(
-        interaction: CommandInteraction,
-        diningHall: any,
-        diningHallOption: string,
-        mealTime: Date,
-        eventKey: string,
-        creator: User,
-        guildId: string,
-        channelId: string
-    ): Promise<void> {
-        // Format time and date for display
-        const mstMealTime = diningEventService.toMST(mealTime);
-        const timeString = mstMealTime.toLocaleTimeString('en-US', {
-            hour: 'numeric',
-            minute: '2-digit',
-            hour12: true,
-            timeZone: 'America/Phoenix'
-        }).toLowerCase();
-
-        const dateString = mstMealTime.toLocaleDateString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            year: 'numeric',
-            timeZone: 'America/Phoenix'
-        });
-
-        // Create embed
-        const embed = new EmbedBuilder()
-            .setColor(this.config.color)
-            .setDescription(`**${this.config.name} @ ${diningHall.name} at ${timeString}**\n(${dateString})\n\n${this.config.description}`)
-            .addFields(
-                {
-                    name: `${this.config.emoji} Attending`,
-                    value: `<@${creator.id}>`,
-                    inline: true
-                },
-                {
-                    name: '❌ Can\'t Make It',
-                    value: '\u200B',
-                    inline: true
-                }
-            );
-
-        // Create buttons
-        const row = new ActionRowBuilder<ButtonBuilder>()
-            .addComponents(
-                new ButtonBuilder()
-                    .setCustomId(`${this.config.mealType}_yes`)
-                    .setEmoji(this.config.emoji)
-                    .setLabel('Attending')
-                    .setStyle(ButtonStyle.Primary),
-                new ButtonBuilder()
-                    .setCustomId(`${this.config.mealType}_no`)
-                    .setEmoji('❌')
-                    .setLabel('Erm, Naur')
-                    .setStyle(ButtonStyle.Secondary),
-                new ButtonBuilder()
-                    .setCustomId(`${this.config.mealType}_cancel`)
-                    .setLabel('Cancel Event')
-                    .setStyle(ButtonStyle.Danger)
-            );
-
-        // Send message
-        await interaction.reply({
-            embeds: [embed],
-            components: [row]
-        });
-
-        const message = await interaction.fetchReply();
-
-        // Create event in database
-        const startTime = diningEventService.getMSTNow();
-        const eventId = await diningEventService.createDiningEvent(
-            eventKey,
-            creator,
-            guildId,
-            channelId,
-            this.config.mealType,
-            diningHallOption,
-            startTime,
-            mealTime,
-            message.id as string
-        );
-
-        if (!eventId) {
-            await interaction.editReply({
-                content: `Failed to create ${this.config.name.toLowerCase()} event. Please try again.`,
-                components: []
-            });
-            return;
-        }
-
-        // Set up event handlers
-        await this.setupEventHandlers(interaction, message, eventId, eventKey, creator, diningHall, mealTime, startTime, embed, row);
+    private async getEventId(eventKey: string): Promise<number> {
+        // Quick database lookup for event ID
+        const { data } = await (await import('../../services/database')).db.getClient()
+            .from('dining_events')
+            .select('id')
+            .eq('event_key', eventKey)
+            .eq('status', 'active')
+            .single();
+        
+        return data?.id || 0;
     }
 
-    private async setupEventHandlers(
-        interaction: CommandInteraction,
-        message: any,
-        eventId: number,
-        eventKey: string,
-        creator: User,
-        diningHall: any,
-        mealTime: Date,
-        startTime: Date,
-        embed: EmbedBuilder,
-        row: ActionRowBuilder<ButtonBuilder>
-    ): Promise<void> {
-        // Ensure both dates are in the same timezone context for accurate calculation
-        const now = diningEventService.getMSTNow();
-        const rawDuration = mealTime.getTime() - now.getTime();
-        const timeoutDuration = Math.min(Math.max(rawDuration, 1000), 24 * 60 * 60 * 1000); // Min 1 second, Max 24 hours
-        
-        console.log(`[${this.config.name}] Setting up timeout - Now: ${now.toISOString()}, Meal Time: ${mealTime.toISOString()}`);
-        console.log(`[${this.config.name}] Raw duration: ${rawDuration}ms, Final duration: ${timeoutDuration}ms (${Math.round(timeoutDuration / 1000 / 60)} minutes)`);
-        
-        if (rawDuration <= 0) {
-            console.warn(`[${this.config.name}] WARNING: Meal time is in the past! Raw duration: ${rawDuration}ms`);
-        }
-
-        // Create collector without automatic timeout (we handle timeout manually)
-        const collector = message.createMessageComponentCollector({
-            componentType: ComponentType.Button
-        });
-
-        collector.on('collect', async (buttonInteraction: ButtonInteraction) => {
-            try {
-                console.log(`[${this.config.name}] Collector received button interaction: ${buttonInteraction.customId}`);
-                await this.handleButtonInteraction(buttonInteraction, eventId, eventKey, creator, embed, row, collector);
-            } catch (error) {
-                console.error(`[${this.config.name}] Error in collector button handler:`, error);
-                try {
-                    if (!buttonInteraction.replied && !buttonInteraction.deferred) {
-                        await buttonInteraction.reply({
-                            content: 'An error occurred processing your request. Please try again.',
-                            ephemeral: true
-                        });
-                    }
-                } catch (replyError) {
-                    console.error(`[${this.config.name}] Could not send error reply:`, replyError);
-                }
-            }
-        });
-
-        // Set timeout for meal time using Node.js setTimeout directly
-        console.log(`[${this.config.name}] Creating timeout with duration: ${timeoutDuration}ms`);
-        
-        const timeoutId = setTimeout(async () => {
-            try {
-                console.log(`[${this.config.name}] Timeout reached! Triggering meal time notification.`);
-                await this.handleMealTimeReached(interaction, eventKey, creator, diningHall, message);
-                collector.stop('meal_time_reached');
-            } catch (error) {
-                console.error(`[${this.config.name}] Error in timeout callback:`, error);
-                collector.stop('timeout_error');
-            }
-        }, timeoutDuration);
-        
-        // Add a test timeout to verify setTimeout is working
-        setTimeout(() => {
-            console.log(`[${this.config.name}] Test timeout fired after 5 seconds - setTimeout mechanism is working`);
-        }, 5000);
-        
-        console.log(`[${this.config.name}] Timeout ID created: ${timeoutId}`);
-
-        // Cleanup on collector end
-        collector.on('end', (collected: any, reason: string) => {
-            console.log(`[${this.config.name}] Collector ended with reason: "${reason}", collected: ${collected?.size || 'unknown'} interactions`);
-            // Clear timeout if collector ends early
-            if (reason !== 'meal_time_reached') {
-                console.log(`[${this.config.name}] Clearing timeout due to early collector end`);
-                clearTimeout(timeoutId);
-            }
-        });
-    }
-
-    private async handleButtonInteraction(
-        buttonInteraction: ButtonInteraction,
-        eventId: number,
-        eventKey: string,
-        creator: User,
-        embed: EmbedBuilder,
-        row: ActionRowBuilder<ButtonBuilder>,
-        collector: InteractionCollector<ButtonInteraction>
-    ): Promise<void> {
+    private async updateEventDiningHall(eventKey: string, diningHall: string): Promise<void> {
         try {
-            const userId = buttonInteraction.user.id;
-            const user = buttonInteraction.user;
-            
-            console.log(`[${this.config.name}] Button interaction: ${buttonInteraction.customId} by user ${userId}`);
-
-        if (buttonInteraction.customId === `${this.config.mealType}_yes`) {
-            console.log(`[${this.config.name}] Adding user ${userId} as attendee to event ${eventId}`);
-            const success = await diningEventService.addParticipant(eventId, userId, user.username, 'attendee');
-            console.log(`[${this.config.name}] Add participant result:`, success);
-        } else if (buttonInteraction.customId === `${this.config.mealType}_no`) {
-            console.log(`[${this.config.name}] Adding user ${userId} as declined to event ${eventId}`);
-            const success = await diningEventService.addParticipant(eventId, userId, user.username, 'declined');
-            console.log(`[${this.config.name}] Add participant result:`, success);
-        } else if (buttonInteraction.customId === `${this.config.mealType}_cancel`) {
-            // Get event data to verify creator
-            const eventData = await diningEventService.getDiningEvent(eventKey);
-            if (!eventData) {
-                await buttonInteraction.reply({
-                    content: 'Event not found.',
-                    ephemeral: true
-                });
-                return;
-            }
-
-            console.log(`[${this.config.name}] Cancel attempt - User ID: "${userId}", Creator ID: "${eventData.creator.id}", Type check: ${typeof userId} vs ${typeof eventData.creator.id}`);
-            
-            if (userId === eventData.creator.id || userId === eventData.creator.id.toString()) {
-                await diningEventService.cancelDiningEvent(eventKey);
-                
-                // Update the message to show cancellation, then delete it
-                await buttonInteraction.update({
-                    content: `${this.config.name} event has been cancelled.`,
-                    embeds: [],
-                    components: []
-                });
-                
-                // Stop the collector
-                collector.stop('cancelled_by_creator');
-                
-                // Delete the message after a short delay
-                setTimeout(async () => {
-                    try {
-                        await buttonInteraction.message.delete();
-                    } catch (error) {
-                        console.warn('Could not delete cancelled event message:', error);
-                    }
-                }, 3000); // 3 second delay
-                
-                return;
-            } else {
-                await buttonInteraction.reply({
-                    content: `Only the event creator can cancel this ${this.config.name.toLowerCase()} event.`,
-                    ephemeral: true
-                });
-                return;
-            }
-        }
-
-        // Update embed with new participation data
-        console.log(`[${this.config.name}] Retrieving event data for embed update`);
-        const eventData = await diningEventService.getDiningEvent(eventKey);
-        if (!eventData) {
-            console.error(`[${this.config.name}] No event data found for key: ${eventKey}`);
-            return;
-        }
-
-        console.log(`[${this.config.name}] Event data retrieved - Attendees: ${eventData.attendees.size}, Declined: ${eventData.declined.size}`);
-        
-        const attendeesText = eventData.attendees.size > 0
-            ? Array.from(eventData.attendees.keys()).map(userId => `<@${userId}>`).join('\n')
-            : '\u200B';
-
-        const declinedText = eventData.declined.size > 0
-            ? Array.from(eventData.declined.keys()).map(userId => `<@${userId}>`).join('\n')
-            : '\u200B';
-            
-        console.log(`[${this.config.name}] Attendees text: "${attendeesText}", Declined text: "${declinedText}"`);
-
-        const updatedEmbed = EmbedBuilder.from(embed)
-            .setFields(
-                {
-                    name: `${this.config.emoji} Attending`,
-                    value: attendeesText,
-                    inline: true
-                },
-                {
-                    name: '❌ Can\'t Make It',
-                    value: declinedText,
-                    inline: true
-                }
-            );
-
-            console.log(`[${this.config.name}] Updating interaction with new embed...`);
-            await buttonInteraction.update({
-                embeds: [updatedEmbed],
-                components: [row]
-            });
-            
-            console.log(`[${this.config.name}] Successfully updated embed for ${buttonInteraction.customId}`);
+            const { db } = await import('../../services/database');
+            await db.getClient()
+                .from('dining_events')
+                .update({ dining_hall: diningHall })
+                .eq('event_key', eventKey)
+                .eq('status', 'active');
         } catch (error) {
-            console.error(`Error handling button interaction for ${this.config.name}:`, error);
-            try {
-                if (!buttonInteraction.replied && !buttonInteraction.deferred) {
-                    await buttonInteraction.reply({
-                        content: 'There was an error processing your request. Please try again.',
-                        ephemeral: true
-                    });
-                }
-            } catch (replyError) {
-                console.error('Could not send error response:', replyError);
-            }
-        }
-    }
-
-    private async handleMealTimeReached(
-        interaction: CommandInteraction,
-        eventKey: string,
-        creator: User,
-        diningHall: any,
-        message: any
-    ): Promise<void> {
-        console.log(`[${this.config.name}] handleMealTimeReached called for eventKey: ${eventKey}`);
-        
-        const eventData = await diningEventService.getDiningEvent(eventKey);
-        
-        if (!eventData || eventData.status !== 'active') {
-            console.log(`[${this.config.name}] Event not found or not active:`, eventData?.status);
-            return;
-        }
-        
-        console.log(`[${this.config.name}] Event data retrieved, attendees:`, eventData.attendees.size);
-
-        // Disable buttons
-        const disabledRow = new ActionRowBuilder<ButtonBuilder>()
-            .addComponents(
-                new ButtonBuilder()
-                    .setCustomId(`${this.config.mealType}_yes`)
-                    .setEmoji(this.config.emoji)
-                    .setLabel('Attending')
-                    .setStyle(ButtonStyle.Primary)
-                    .setDisabled(true),
-                new ButtonBuilder()
-                    .setCustomId(`${this.config.mealType}_no`)
-                    .setEmoji('❌')
-                    .setLabel('Erm, Naur')
-                    .setStyle(ButtonStyle.Secondary)
-                    .setDisabled(true),
-                new ButtonBuilder()
-                    .setCustomId(`${this.config.mealType}_cancel`)
-                    .setLabel('Cancel Event')
-                    .setStyle(ButtonStyle.Danger)
-                    .setDisabled(true)
-            );
-
-        await message.edit({ components: [disabledRow] });
-
-        const channel = interaction.channel as TextChannel;
-
-        try {
-            console.log(`[${this.config.name}] Event reached meal time. Attendees: ${eventData.attendees.size}`);
-            
-            if (eventData.attendees.size <= 1) {
-                // Only the creator or no one
-                await channel.send(`Womp womp, nobody wanted to get ${this.config.name.toLowerCase()} with <@${creator.id}> at ${diningHall.name}. Event cancelled!`);
-            } else {
-                // Multiple attendees - ping them all
-                const attendeesList = Array.from(eventData.attendees.keys())
-                    .filter(userId => userId && userId.trim()) // Filter out empty user IDs
-                    .map(userId => `<@${userId}>`)
-                    .join(' ');
-                
-                console.log(`[${this.config.name}] Generated attendees list from ${eventData.attendees.size} attendees: "${attendeesList}"`);
-                console.log(`[${this.config.name}] Attendees Map:`, Array.from(eventData.attendees.entries()));
-                
-                await channel.send(`${this.config.name} time at ${diningHall.name}! ${attendeesList}`);
-            }
-        } catch (error) {
-            console.error('Error sending meal time notification:', error);
-            // Try to send a basic notification without pings
-            try {
-                await channel.send(`${this.config.emoji} ${this.config.name} time at ${diningHall.name}! Enjoy your meal! ${this.config.cancelEmoji}`);
-            } catch (fallbackError) {
-                console.error('Failed to send fallback meal notification:', fallbackError);
-            }
-        }
-
-        // Mark event as completed in database
-        await diningEventService.completeDiningEvent(eventKey);
-        
-        // Delete the message after completion
-        try {
-            await message.delete();
-            console.log(`[${this.config.name}] Event message deleted after completion`);
-        } catch (deleteError) {
-            console.warn(`[${this.config.name}] Could not delete completed event message:`, deleteError);
+            console.error('Error updating event dining hall:', error);
         }
     }
 
@@ -787,7 +522,7 @@ export class BaseDiningCommand {
 
         try {
             const errorMessage = `There was an error organizing the ${this.config.name.toLowerCase()} event. Please try again!`;
-            
+
             if (interaction.deferred || interaction.replied) {
                 await interaction.followUp({
                     content: errorMessage,
@@ -805,6 +540,15 @@ export class BaseDiningCommand {
     }
 
     cleanup(): void {
+        // Clear all timeouts and cache for this meal type
+        for (const [eventKey, eventState] of BaseDiningCommand.eventCache.entries()) {
+            if (eventState.mealType === this.config.mealType) {
+                if (eventState.timeoutId) {
+                    clearTimeout(eventState.timeoutId);
+                }
+                BaseDiningCommand.eventCache.delete(eventKey);
+            }
+        }
         diningEventService.cleanup();
     }
 }
