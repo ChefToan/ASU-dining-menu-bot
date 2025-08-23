@@ -14,15 +14,19 @@ cd "$APP_DIR"
 
 # Pull latest changes
 echo "📥 Pulling latest changes from repository..."
-git pull origin main
+git pull origin master
 
-# Install/update dependencies
+# Install/update dependencies (including dev dependencies needed for building)
 echo "📦 Installing dependencies with Yarn..."
-yarn install --production --frozen-lockfile
+yarn install --frozen-lockfile
 
 # Build the application
 echo "🔨 Building application..."
 yarn build
+
+# Optional: Clean up dev dependencies after building (saves disk space)
+echo "🧹 Cleaning up dev dependencies..."
+yarn install --production --frozen-lockfile
 
 # Restart the service using PM2
 echo "🔄 Restarting application..."

@@ -432,18 +432,19 @@ export class DiningEventService {
         switch (mealType) {
             case 'breakfast':
                 // Mon-Fri 7:00AM - 11:00AM
-                // if (dayOfWeek >= 1 && dayOfWeek <= 5) {
-                //     return timeInMinutes >= 7 * 60 && timeInMinutes < 11 * 60;
-                // }
-                // return false;
-                return true;
+                if (dayOfWeek >= 1 && dayOfWeek <= 5) {
+                    return timeInMinutes >= 7 * 60 && timeInMinutes < 11 * 60;
+                }
+                return false;
+                // return true;
 
             case 'brunch':
                 // Sat-Sun 10:00AM - 2:00PM
-                if (dayOfWeek === 0 || dayOfWeek === 6) {
-                    return timeInMinutes >= 10 * 60 && timeInMinutes < 14 * 60;
-                }
-                return false;
+                // if (dayOfWeek === 0 || dayOfWeek === 6) {
+                //     return timeInMinutes >= 10 * 60 && timeInMinutes < 14 * 60;
+                // }
+                // return false;
+                return true;
 
             case 'lunch':
                 // Mon-Fri 11:00AM - 2:00PM
