@@ -93,7 +93,7 @@ jobs:
           nvm use 20 || nvm install 20
           
           # Install/update dependencies with Yarn
-          yarn install --production --frozen-lockfile
+          yarn install --frozen-lockfile
           
           # Build the application
           yarn build
