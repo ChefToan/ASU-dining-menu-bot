@@ -10,23 +10,11 @@ This directory contains SQL scripts for managing the ASU Dining Bot database.
 - **Contains**: Tables, indexes, functions, triggers, views
 - **Safe to run**: ✅ Yes (creates only, no destructive operations)
 
-### `fresh_install.sql`
-- **Purpose**: Alternative to schema.sql with better formatting and messages
-- **Use**: Preferred for new installations, identical to schema.sql but with progress messages
-- **Contains**: Complete database setup with user-friendly output
-- **Safe to run**: ✅ Yes (creates only, no destructive operations)
-
-### `migration.sql`
+### `db_migration.sql`
 - **Purpose**: Migrates existing database from old schema to new schema
 - **Use**: When updating existing database with new features while preserving data
 - **Contains**: ADD COLUMN statements, new tables, updated indexes and views
 - **Safe to run**: ✅ Yes (preserves existing data, only adds new features)
-
-### `rollback.sql`
-- **Purpose**: Reverts migration.sql changes back to old schema
-- **Use**: Emergency rollback if migration causes issues
-- **Contains**: DROP COLUMN statements, removes new tables
-- **Safe to run**: ⚠️ **DESTRUCTIVE** - Removes new features and their data
 
 ### `reset.sql`
 - **Purpose**: Drops ALL existing objects and recreates everything with latest schema
@@ -52,11 +40,7 @@ This directory contains SQL scripts for managing the ASU Dining Bot database.
 
 ### 1. Setting up a new database:
 ```bash
-# Option A: Using current schema.sql
 psql -d your_database -f schema.sql
-
-# Option B: Using fresh_install.sql (recommended, has progress messages)
-psql -d your_database -f fresh_install.sql
 ```
 
 ### 2. Migrating existing database to new schema:
@@ -65,35 +49,27 @@ psql -d your_database -f fresh_install.sql
 pg_dump your_database > backup_before_migration.sql
 
 # Run migration
-psql -d your_database -f migration.sql
+psql -d your_database -f db_migration.sql
 
 # Verify data integrity
 psql -d your_database -c "SELECT COUNT(*) FROM users;"
 ```
 
-### 3. Rolling back migration (emergency only):
-```bash
-# BACKUP FIRST!
-pg_dump your_database > backup_before_rollback.sql
 
-# Rollback (WARNING: loses new feature data)
-psql -d your_database -f rollback.sql
-```
-
-### 4. Resetting existing database with new schema:
+### 3. Resetting existing database with new schema:
 ```bash
 psql -d your_database -f reset.sql
 ```
 
-### 5. Completely wiping database clean:
+### 4. Completely wiping database clean:
 ```bash
 psql -d your_database -f drop_all_tables.sql
 ```
 
-### 6. After using drop_all_tables.sql, run fresh_install.sql:
+### 5. After using drop_all_tables.sql, run schema.sql:
 ```bash
 psql -d your_database -f drop_all_tables.sql
-psql -d your_database -f fresh_install.sql
+psql -d your_database -f schema.sql
 ```
 
 ## Database Schema Overview
