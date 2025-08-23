@@ -35,11 +35,15 @@ interface EventState {
     declined: Set<string>;
     messageId?: string;
     timeoutId?: NodeJS.Timeout;
+    eventId?: number;
+    selectCollector?: any;
 }
 
 export class BaseDiningCommand {
     protected config: MealConfig;
     private static eventCache = new Map<string, EventState>();
+    private static readonly MAX_CACHE_SIZE = 100;
+    private static cacheCleanupInterval: NodeJS.Timeout | null = null;
 
     constructor(config: MealConfig) {
         this.config = config;
@@ -142,10 +146,17 @@ export class BaseDiningCommand {
                 mealTime: mealTime!,
                 diningHall: diningHallOption,
                 attendees: new Set([creator.id]),
-                declined: new Set()
+                declined: new Set(),
+                eventId
             };
 
+            // Clean cache if too large
+            if (BaseDiningCommand.eventCache.size >= BaseDiningCommand.MAX_CACHE_SIZE) {
+                this.cleanupOldEvents();
+            }
+
             BaseDiningCommand.eventCache.set(eventKey, eventState);
+            this.startCacheCleanupTimer();
 
             await this.createEvent(interaction, eventState);
 
@@ -186,9 +197,7 @@ export class BaseDiningCommand {
         });
 
         collector.on('end', () => {
-            if (eventState.timeoutId) {
-                clearTimeout(eventState.timeoutId);
-            }
+            this.cleanupEvent(eventState);
         });
     }
 
@@ -208,7 +217,7 @@ export class BaseDiningCommand {
                 console.log(`User ${userId} set to attending. Attendees: ${Array.from(eventState.attendees)}, Declined: ${Array.from(eventState.declined)}`);
                 
                 await diningEventService.addParticipant(
-                    await this.getEventId(eventState.eventKey), userId, buttonInteraction.user.username, 'attendee'
+                    eventState.eventId || 0, userId, buttonInteraction.user.username, 'attendee'
                 );
 
             } else if (customId === `${this.config.mealType}_no`) {
@@ -218,7 +227,7 @@ export class BaseDiningCommand {
                 console.log(`User ${userId} set to declined. Attendees: ${Array.from(eventState.attendees)}, Declined: ${Array.from(eventState.declined)}`);
                 
                 await diningEventService.addParticipant(
-                    await this.getEventId(eventState.eventKey), userId, buttonInteraction.user.username, 'declined'
+                    eventState.eventId || 0, userId, buttonInteraction.user.username, 'declined'
                 );
 
             } else if (customId === `${this.config.mealType}_select_hall`) {
@@ -252,6 +261,12 @@ export class BaseDiningCommand {
             const { embed, buttons } = this.buildEventMessage(eventState, eventState.creator.id);
             const row = new ActionRowBuilder<ButtonBuilder>().addComponents(buttons);
 
+            // Check if interaction is still valid
+            if (buttonInteraction.replied || buttonInteraction.deferred) {
+                console.warn('Button interaction already replied/deferred, skipping update');
+                return;
+            }
+
             await buttonInteraction.update({
                 embeds: [embed],
                 components: [row]
@@ -273,6 +288,10 @@ export class BaseDiningCommand {
         eventState: EventState,
         originalInteraction: CommandInteraction
     ): Promise<void> {
+        // Clean up existing select collector
+        if (eventState.selectCollector) {
+            eventState.selectCollector.stop('new_selection');
+        }
         const selectMenu = new StringSelectMenuBuilder()
             .setCustomId(`${this.config.mealType}_hall_select`)
             .setPlaceholder('Choose a dining hall...')
@@ -296,6 +315,9 @@ export class BaseDiningCommand {
             componentType: ComponentType.StringSelect,
             time: 60000
         });
+        
+        // Store collector reference for cleanup
+        eventState.selectCollector = selectCollector;
 
         selectCollector.on('collect', async (selectInteraction: StringSelectMenuInteraction) => {
             if (selectInteraction.user.id !== eventState.creator.id) {
@@ -353,7 +375,11 @@ export class BaseDiningCommand {
         let titleText: string;
         if (eventState.diningHall && eventState.diningHall !== 'unspecified') {
             const diningHall = DINING_HALLS[eventState.diningHall as keyof typeof DINING_HALLS];
-            titleText = `**${this.config.name} @ ${diningHall.name} at ${timeString}**`;
+            if (diningHall) {
+                titleText = `**${this.config.name} @ ${diningHall.name} at ${timeString}**`;
+            } else {
+                titleText = `**${this.config.name} at ${timeString}**`;
+            }
         } else {
             titleText = `**${this.config.name} at ${timeString}**`;
         }
@@ -416,11 +442,7 @@ export class BaseDiningCommand {
     private async cancelEvent(interaction: ButtonInteraction, eventState: EventState): Promise<void> {
         await diningEventService.cancelDiningEvent(eventState.eventKey);
         
-        if (eventState.timeoutId) {
-            clearTimeout(eventState.timeoutId);
-        }
-        
-        BaseDiningCommand.eventCache.delete(eventState.eventKey);
+        this.cleanupEvent(eventState);
 
         await interaction.update({
             content: `${this.config.name} event has been cancelled.`,
@@ -440,16 +462,44 @@ export class BaseDiningCommand {
     private async handleMealTimeReached(interaction: CommandInteraction, eventState: EventState): Promise<void> {
         const channel = interaction.channel as TextChannel;
         
+        // Check if channel still exists
+        if (!channel || !channel.isTextBased()) {
+            console.log('Channel no longer exists or is not text-based, cleaning up event');
+            this.cleanupEvent(eventState);
+            return;
+        }
+        
         try {
             const diningHall = eventState.diningHall && eventState.diningHall !== 'unspecified'
-                ? DINING_HALLS[eventState.diningHall as keyof typeof DINING_HALLS]
+                ? DINING_HALLS[eventState.diningHall as keyof typeof DINING_HALLS] || { name: 'a dining hall' }
                 : { name: 'a dining hall' };
 
-            if (eventState.attendees.size <= 1) {
-                await channel.send(`Womp womp, nobody wanted to get ${this.config.name.toLowerCase()} with <@${eventState.creator.id}> at ${diningHall.name}. Event cancelled!`);
+            const attendeesList = Array.from(eventState.attendees);
+            const declinedList = Array.from(eventState.declined);
+            
+            console.log(`Meal time reached - Attendees: ${eventState.attendees.size} (${attendeesList}), Declined: ${eventState.declined.size} (${declinedList})`);
+            console.log(`Creator ID: ${eventState.creator.id}, Is creator attending: ${attendeesList.includes(eventState.creator.id)}`);
+
+            if (eventState.attendees.size === 0) {
+                // Nobody is attending
+                console.log('Sending: Nobody wanted to get meal message');
+                await channel.send(`Womp womp, nobody wanted to get ${this.config.name.toLowerCase()} at ${diningHall.name}. Event cancelled!`);
+            } else if (eventState.attendees.size === 1 && eventState.declined.size === 0) {
+                // Only one person attending and nobody declined - just that person
+                const attendeeId = attendeesList[0];
+                console.log(`Sending: Nobody wanted to join ${attendeeId} message`);
+                await channel.send(`Womp womp, nobody wanted to get ${this.config.name.toLowerCase()} with <@${attendeeId}> at ${diningHall.name}. Event cancelled!`);
             } else {
-                const attendeesList = Array.from(eventState.attendees).map(userId => `<@${userId}>`).join(' ');
-                await channel.send(`${this.config.name} time at ${diningHall.name}! ${attendeesList}`);
+                // Either multiple people attending, OR 1+ attending with others who declined - ping attendees
+                const attendeePings = attendeesList.map(userId => `<@${userId}>`).join(' ');
+                console.log(`Sending: Meal time message to ${attendeesList.length} attendees: ${attendeePings}`);
+                
+                // Check if dining hall was selected
+                if (eventState.diningHall && eventState.diningHall !== 'unspecified') {
+                    await channel.send(`${this.config.name} time at ${diningHall.name}! ${attendeePings}`);
+                } else {
+                    await channel.send(`${this.config.name} time! ${attendeePings}`);
+                }
             }
         } catch (error) {
             console.error('Error sending meal time notification:', error);
@@ -457,7 +507,7 @@ export class BaseDiningCommand {
 
         // Clean up
         await diningEventService.completeDiningEvent(eventState.eventKey);
-        BaseDiningCommand.eventCache.delete(eventState.eventKey);
+        this.cleanupEvent(eventState);
 
         try {
             const message = await interaction.fetchReply();
@@ -492,16 +542,40 @@ export class BaseDiningCommand {
         }
     }
 
-    private async getEventId(eventKey: string): Promise<number> {
-        // Quick database lookup for event ID
-        const { data } = await (await import('../../services/database')).db.getClient()
-            .from('dining_events')
-            .select('id')
-            .eq('event_key', eventKey)
-            .eq('status', 'active')
-            .single();
+    private cleanupEvent(eventState: EventState): void {
+        // Clear timeout
+        if (eventState.timeoutId) {
+            clearTimeout(eventState.timeoutId);
+            eventState.timeoutId = undefined;
+        }
         
-        return data?.id || 0;
+        // Stop select collector
+        if (eventState.selectCollector) {
+            eventState.selectCollector.stop('cleanup');
+            eventState.selectCollector = undefined;
+        }
+        
+        // Remove from cache
+        BaseDiningCommand.eventCache.delete(eventState.eventKey);
+    }
+    
+    private cleanupOldEvents(): void {
+        const now = Date.now();
+        const oneHourAgo = now - (60 * 60 * 1000);
+        
+        for (const [eventKey, eventState] of BaseDiningCommand.eventCache.entries()) {
+            if (eventState.mealTime.getTime() < oneHourAgo) {
+                this.cleanupEvent(eventState);
+            }
+        }
+    }
+    
+    private startCacheCleanupTimer(): void {
+        if (!BaseDiningCommand.cacheCleanupInterval) {
+            BaseDiningCommand.cacheCleanupInterval = setInterval(() => {
+                this.cleanupOldEvents();
+            }, 10 * 60 * 1000); // Clean up every 10 minutes
+        }
     }
 
     private async updateEventDiningHall(eventKey: string, diningHall: string): Promise<void> {
@@ -543,12 +617,16 @@ export class BaseDiningCommand {
         // Clear all timeouts and cache for this meal type
         for (const [eventKey, eventState] of BaseDiningCommand.eventCache.entries()) {
             if (eventState.mealType === this.config.mealType) {
-                if (eventState.timeoutId) {
-                    clearTimeout(eventState.timeoutId);
-                }
-                BaseDiningCommand.eventCache.delete(eventKey);
+                this.cleanupEvent(eventState);
             }
         }
+        
+        // Clear global cleanup timer if no events left
+        if (BaseDiningCommand.eventCache.size === 0 && BaseDiningCommand.cacheCleanupInterval) {
+            clearInterval(BaseDiningCommand.cacheCleanupInterval);
+            BaseDiningCommand.cacheCleanupInterval = null;
+        }
+        
         diningEventService.cleanup();
     }
 }
