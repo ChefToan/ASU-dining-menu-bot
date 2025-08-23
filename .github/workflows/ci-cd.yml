@@ -35,7 +35,12 @@ jobs:
       run: yarn build
 
     - name: Run tests (if available)
-      run: yarn test --if-present
+      run: |
+        if yarn run --json | grep -q '"test"'; then
+          yarn test
+        else
+          echo "No test script found, skipping tests"
+        fi
 
     # Upload build artifacts for deployment
     - name: Upload build artifacts
