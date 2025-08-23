@@ -1,31 +1,26 @@
 module.exports = {
-  apps: [{
-    name: 'asu-dining-bot',
-    script: 'dist/index.js',
-    instances: 1,
-    exec_mode: 'fork',
-    
-    // Restart settings
-    autorestart: true,
-    watch: false,
-    max_memory_restart: '500M',
-    
-    // Environment variables
-    env: {
-      NODE_ENV: 'production'
-    },
-    
-    // Logging
-    log_file: './logs/combined.log',
-    out_file: './logs/out.log',
-    error_file: './logs/error.log',
-    log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
-    
-    // Process management
-    min_uptime: '10s',
-    max_restarts: 10,
-    
-    // Graceful shutdown
-    kill_timeout: 5000
-  }]
+  apps: [
+    {
+      name: 'asu-dining-bot',
+      script: './dist/index.js',
+      cwd: '/home/ubuntu/asu-dining-menu-bot',
+      instances: 1,
+      exec_mode: 'fork',
+      env: {
+        NODE_ENV: 'production',
+        LOG_LEVEL: 'info'
+      },
+      log_file: '/home/ubuntu/asu-dining-menu-bot/logs/combined.log',
+      out_file: '/home/ubuntu/asu-dining-menu-bot/logs/out.log',
+      error_file: '/home/ubuntu/asu-dining-menu-bot/logs/error.log',
+      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
+      merge_logs: true,
+      restart_delay: 4000,
+      max_restarts: 10,
+      min_uptime: '10s',
+      watch: false,
+      ignore_watch: ['node_modules', 'logs', '.git'],
+      env_file: '/home/ubuntu/asu-dining-menu-bot/.env'
+    }
+  ]
 };

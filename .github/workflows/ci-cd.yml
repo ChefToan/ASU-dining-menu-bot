@@ -23,44 +23,49 @@ jobs:
       uses: actions/setup-node@v4
       with:
         node-version: ${{ matrix.node-version }}
-        cache: 'npm'
-    
+        cache: 'yarn'
+
     - name: Install dependencies
-      run: npm ci
-    
+      run: yarn install --frozen-lockfile
+
     - name: Type check
-      run: npm run typecheck
-    
+      run: yarn typecheck
+
     - name: Build project
-      run: npm run build
-    
+      run: yarn build
+
     - name: Run tests (if available)
-      run: npm test --if-present
-    
+      run: yarn test --if-present
+
     # Upload build artifacts for deployment
     - name: Upload build artifacts
-      if: matrix.node-version == '20.x' && github.ref == 'refs/heads/master'
+      if: matrix.node-version == '20.x' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main')
       uses: actions/upload-artifact@v4
       with:
-        name: build-files
+        name: build-artifacts
         path: |
           dist/
           package.json
-          package-lock.json
+          yarn.lock
+          ecosystem.config.js
+          deploy/
         retention-days: 1
 
   # Continuous Deployment Job
   deploy:
     needs: ci
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/master' && github.event_name == 'push'
-    
+    if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
+
     steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
     - name: Download build artifacts
       uses: actions/download-artifact@v4
       with:
-        name: build-files
-    
+        name: build-artifacts
+
     - name: Deploy to Ubuntu Server
       uses: appleboy/ssh-action@v1.0.3
       with:
@@ -69,43 +74,40 @@ jobs:
         key: ${{ secrets.SERVER_SSH_KEY }}
         port: ${{ secrets.SERVER_PORT || 22 }}
         script: |
-          # Navigate to bot directory
-          cd ${{ secrets.DEPLOY_PATH || '/home/${{ secrets.SERVER_USER }}/asu-dining-bot' }}
+          cd /home/ubuntu/asu-dining-menu-bot
           
-          # Stop the bot (using PM2 or systemd)
-          sudo systemctl stop asu-dining-bot || pm2 stop asu-dining-bot || echo "Bot not running"
+          # Pull latest changes
+          git pull origin main
           
-          # Backup current deployment
-          cp -r dist dist.backup.$(date +%Y%m%d_%H%M%S) || echo "No previous build to backup"
+          # Install/update dependencies with Yarn
+          yarn install --production --frozen-lockfile
           
-          # Pull latest code
-          git pull origin master
+          # Build the application
+          yarn build
           
-          # Install/update dependencies
-          npm ci --production
+          # Restart the application using PM2
+          pm2 restart asu-dining-bot || pm2 start ecosystem.config.js
           
-          # Build the project
-          npm run build
+          # Save PM2 configuration
+          pm2 save
           
-          # Start the bot
-          sudo systemctl start asu-dining-bot || pm2 start ecosystem.config.js || npm start
-          
-          # Verify deployment
-          sleep 5
-          sudo systemctl status asu-dining-bot || pm2 status || echo "Manual verification needed"
+          # Show status
+          pm2 status asu-dining-bot
 
-  # Optional: Notify on deployment status
-  notify:
-    needs: [ci, deploy]
+  # Health Check Job (optional)
+  health-check:
+    needs: deploy
     runs-on: ubuntu-latest
-    if: always()
-    
+    if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
+
     steps:
-    - name: Deployment Status
-      run: |
-        if [ "${{ needs.deploy.result }}" == "success" ]; then
-          echo "✅ Deployment successful!"
-        else
-          echo "❌ Deployment failed!"
-          exit 1
-        fi
+    - name: Health Check
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.SERVER_HOST }}
+        username: ${{ secrets.SERVER_USER }}
+        key: ${{ secrets.SERVER_SSH_KEY }}
+        port: ${{ secrets.SERVER_PORT || 22 }}
+        script: |
+          cd /home/ubuntu/asu-dining-menu-bot
+          bash deploy/health-check.sh

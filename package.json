@@ -9,7 +9,10 @@
     "dev": "nodemon --watch \"src/**/*.ts\" --exec \"npx ts-node\" src/index.ts",
     "migrate": "psql $DATABASE_URL -f database/db_migration.sql",
     "lint": "echo 'Linting not configured - add ESLint if needed'",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "deploy": "chmod +x deploy/*.sh && ./deploy/deploy.sh",
+    "setup-server": "chmod +x deploy/setup-server.sh && ./deploy/setup-server.sh",
+    "health-check": "chmod +x deploy/health-check.sh && ./deploy/health-check.sh"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.54.0",

@@ -5,25 +5,31 @@
 [Unit]
 Description=ASU Dining Menu Discord Bot
 After=network.target
+Wants=network.target
 
 [Service]
 Type=simple
-User=your-username
-WorkingDirectory=/path/to/asu-dining-menu-bot
-ExecStart=/usr/bin/node dist/index.js
-Restart=on-failure
-RestartSec=5
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/asu-dining-menu-bot
+ExecStart=/usr/bin/node /home/ubuntu/asu-dining-menu-bot/dist/index.js
+Restart=always
+RestartSec=10
 Environment=NODE_ENV=production
+EnvironmentFile=/home/ubuntu/asu-dining-menu-bot/.env
 
 # Logging
-StandardOutput=append:/var/log/asu-dining-bot/out.log
-StandardError=append:/var/log/asu-dining-bot/error.log
+StandardOutput=append:/var/log/asu-dining-bot/stdout.log
+StandardError=append:/var/log/asu-dining-bot/stderr.log
+SyslogIdentifier=asu-dining-bot
 
-# Security
+# Security settings
 NoNewPrivileges=true
+PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/path/to/asu-dining-menu-bot
+ReadWritePaths=/home/ubuntu/asu-dining-menu-bot
+ReadWritePaths=/var/log/asu-dining-bot
 
 [Install]
 WantedBy=multi-user.target
