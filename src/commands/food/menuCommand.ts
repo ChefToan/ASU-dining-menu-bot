@@ -7,6 +7,8 @@ import {
 import { fetchMenu, organizeMenuByStation, getStationNames } from '../../utils/api';
 import { DINING_HALLS, MENU_CONFIG } from '../../utils/config';
 import { MenuResponse, MenuItem } from '../type/menu';
+import { menuCommandContextService } from '../../services/menuCommandContextService';
+import { menuCacheService } from '../../services/menuCacheService';
 import {
     Period,
     parsePeriods,
@@ -77,10 +79,22 @@ export async function execute(interaction: CommandInteraction) {
             components: periodButtons
         });
 
+        // Store context for persistent refresh functionality
+        const message = await interaction.fetchReply();
+        await menuCommandContextService.storeContext(
+            message.id,
+            diningHallOption,
+            formattedDate,
+            interaction.guildId || '',
+            interaction.channelId || '',
+            interaction.user.id
+        );
+
         // Set up interaction handling
         await setupInteractionHandlers(
             interaction,
             diningHall,
+            diningHallOption,
             formattedDate,
             displayName,
             formattedDisplayDate,
@@ -98,6 +112,7 @@ export async function execute(interaction: CommandInteraction) {
 async function setupInteractionHandlers(
     interaction: CommandInteraction | ButtonInteraction,
     diningHall: any,
+    diningHallOption: string,
     formattedDate: string,
     displayName: string,
     formattedDisplayDate: string,
@@ -115,10 +130,22 @@ async function setupInteractionHandlers(
     let currentPeriodMenuData: MenuResponse | null = null;
 
     collector.on('collect', async (buttonInteraction: ButtonInteraction) => {
-        await buttonInteraction.deferUpdate();
+        try {
+            await buttonInteraction.deferUpdate();
+        } catch (error: any) {
+            // Handle expired interaction token (15 minute limit)
+            if (error.code === 10062) {
+                console.log('[MenuCommand] Interaction token expired, handling gracefully');
+                // For expired tokens, we can't defer, but we can still process the interaction
+                // The handler functions will need to use followUp or reply instead of editReply
+            } else {
+                console.error('[MenuCommand] Error deferring interaction:', error);
+                return;
+            }
+        }
 
         if (buttonInteraction.customId === 'refresh_menu') {
-            await handleRefresh(buttonInteraction, diningHall, displayName, formattedDisplayDate);
+            await handleContextualRefresh(buttonInteraction);
         } else if (buttonInteraction.customId.startsWith('period_')) {
             await handlePeriodSelection(
                 buttonInteraction, 
@@ -308,7 +335,142 @@ async function handleStationSelection(
     });
 }
 
-// Handle refresh button
+// Handle context-aware refresh button
+async function handleContextualRefresh(buttonInteraction: ButtonInteraction) {
+    try {
+        // Get the original command context from database
+        const context = await menuCommandContextService.getContext(buttonInteraction.message.id);
+        
+        if (!context) {
+            await buttonInteraction.followUp({
+                content: 'This menu session has expired. Please use the /menu command again.',
+                ephemeral: true
+            });
+            return;
+        }
+
+        const diningHall = DINING_HALLS[context.dining_hall as keyof typeof DINING_HALLS];
+        if (!diningHall) {
+            await buttonInteraction.followUp({
+                content: 'Invalid dining hall configuration. Please use the /menu command again.',
+                ephemeral: true
+            });
+            return;
+        }
+
+        const displayName = getDiningHallDisplayName(context.dining_hall, diningHall.name);
+        const formattedDisplayDate = formatDateForDisplay(new Date(context.original_date));
+
+        // Determine if we should use cache or API based on date
+        const shouldUseCache = menuCommandContextService.shouldUseCache(context.original_date);
+        let menuData: MenuResponse;
+
+        console.log(`[ContextualRefresh] Refreshing menu for ${context.dining_hall} on ${context.original_date}, useCache: ${shouldUseCache}`);
+
+        if (shouldUseCache) {
+            // Try cache first for today's data
+            const cacheKey = menuCacheService.generateCacheKey(diningHall.id, context.original_date);
+            const cachedData = await menuCacheService.get(cacheKey);
+            
+            if (cachedData) {
+                menuData = cachedData;
+                console.log('[ContextualRefresh] Using cached data');
+            } else {
+                // Cache miss, fetch from API and cache it
+                menuData = await fetchMenu({
+                    mode: 'Daily',
+                    locationId: diningHall.id,
+                    date: context.original_date,
+                    periodId: ""
+                });
+                await menuCacheService.set(cacheKey, menuData);
+                console.log('[ContextualRefresh] Fetched fresh data and cached it');
+            }
+        } else {
+            // Past dates: fetch directly from API (no caching)
+            menuData = await fetchMenu({
+                mode: 'Daily',
+                locationId: diningHall.id,
+                date: context.original_date,
+                periodId: ""
+            });
+            console.log('[ContextualRefresh] Fetched fresh data from API (past date)');
+        }
+
+        if (!menuData.Menu?.MenuPeriods?.length) {
+            const errorMsg = formatMessage(MENU_CONFIG.MESSAGES.NO_MENU_AVAILABLE, {
+                diningHall: displayName,
+                date: context.original_date
+            });
+            await buttonInteraction.editReply({
+                content: errorMsg,
+                embeds: [],
+                components: []
+            });
+            return;
+        }
+
+        // Recreate the exact same UI with fresh data
+        const availablePeriods = parsePeriods(menuData.Menu.MenuPeriods);
+        const mainEmbed = createMainEmbed(displayName, formattedDisplayDate);
+        const periodButtons = createPeriodButtons(availablePeriods);
+
+        try {
+            // Try to edit the reply first
+            await buttonInteraction.editReply({
+                embeds: [mainEmbed],
+                components: periodButtons
+            });
+        } catch (error: any) {
+            // If editing fails due to expired token, create a new message
+            if (error.code === 10062 || error.code === 50027) { // Unknown interaction or Invalid Webhook Token
+                console.log('[ContextualRefresh] Token expired, creating new message');
+                
+                const channel = buttonInteraction.channel;
+                if (channel && 'send' in channel) {
+                    const newMessage = await channel.send({
+                        embeds: [mainEmbed],
+                        components: periodButtons
+                    });
+                
+                    if (newMessage) {
+                        // Update context to point to new message
+                        await menuCommandContextService.updateMessageId(buttonInteraction.message.id, newMessage.id);
+                        console.log(`[ContextualRefresh] Created new message ${newMessage.id} and updated context`);
+                    }
+                }
+                return;
+            } else {
+                throw error; // Re-throw unexpected errors
+            }
+        }
+
+        // Update context with new message ID (the edited reply maintains the same message ID)
+        // So we don't need to update the context
+
+        // Set up new interaction handling with regenerated buttons
+        await setupInteractionHandlers(
+            buttonInteraction,
+            diningHall,
+            context.dining_hall,
+            context.original_date,
+            displayName,
+            formattedDisplayDate,
+            availablePeriods,
+            mainEmbed,
+            periodButtons
+        );
+
+    } catch (error) {
+        console.error('Error in contextual refresh:', error);
+        await buttonInteraction.followUp({
+            content: 'Failed to refresh menu. Please try the /menu command again.',
+            ephemeral: true
+        });
+    }
+}
+
+// Handle refresh button (legacy - kept for compatibility)
 async function handleRefresh(
     buttonInteraction: ButtonInteraction, 
     diningHall: any,
@@ -349,10 +511,12 @@ async function handleRefresh(
             components: periodButtons
         });
 
-        // Set up interaction handling again after refresh
+        // Note: Legacy refresh doesn't have context, so we pass empty string for diningHallOption
+        // This path should rarely be used now that we have contextual refresh
         await setupInteractionHandlers(
             buttonInteraction,
             diningHall,
+            '', // Legacy refresh doesn't know the original dining hall option
             formattedDate,
             displayName,
             formattedDisplayDate,
@@ -391,8 +555,19 @@ async function handleCollectorEnd(
             });
 
             refreshCollector.on('collect', async (buttonInteraction: ButtonInteraction) => {
-                await buttonInteraction.deferUpdate();
-                await handleRefresh(buttonInteraction, diningHall, displayName, formattedDisplayDate);
+                try {
+                    await buttonInteraction.deferUpdate();
+                } catch (error: any) {
+                    // Handle expired interaction token (15 minute limit)
+                    if (error.code === 10062) {
+                        console.log('[RefreshCollector] Interaction token expired, handling gracefully');
+                        // Continue processing even if defer fails
+                    } else {
+                        console.error('[RefreshCollector] Error deferring interaction:', error);
+                        return;
+                    }
+                }
+                await handleContextualRefresh(buttonInteraction);
             });
 
             refreshCollector.on('end', () => {

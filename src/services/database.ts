@@ -203,6 +203,33 @@ export interface Database {
           participant_type?: 'attendee' | 'declined';
         };
       };
+      menu_command_contexts: {
+        Row: {
+          id: number;
+          message_id: string;
+          dining_hall: string;
+          original_date: string;
+          guild_id: string;
+          channel_id: string;
+          user_id: string;
+          created_at: string;
+          expires_at: string;
+        };
+        Insert: {
+          message_id: string;
+          dining_hall: string;
+          original_date: string;
+          guild_id: string;
+          channel_id: string;
+          user_id: string;
+          expires_at: string;
+        };
+        Update: {
+          dining_hall?: string;
+          original_date?: string;
+          expires_at?: string;
+        };
+      };
     };
     Views: {
       user_leaderboard: {
