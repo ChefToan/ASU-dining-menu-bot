@@ -16,7 +16,6 @@ import {
     parsePeriods,
     createPeriodButtons,
     createStationButtons,
-    createStationDropdown,
     createRefreshButton,
     getDiningHallDisplayName,
     formatDateForDisplay,
@@ -156,21 +155,9 @@ export async function setupInteractionHandlers(
                     currentPeriodId,
                     currentPeriodMenuData
                 );
-            } else if (buttonInteraction.customId === 'back_to_periods') {
-                await buttonInteraction.editReply({
-                    embeds: [mainEmbed],
-                    components: periodButtons
-                });
-            }
-        }
-        
-        // Handle dropdown interactions
-        else if (componentInteraction.isStringSelectMenu()) {
-            const selectInteraction = componentInteraction;
-            
-            if (selectInteraction.customId.startsWith('station_select_')) {
-                await handleStationDropdownSelection(
-                    selectInteraction,
+            } else if (buttonInteraction.customId.startsWith('station_')) {
+                await handleStationButtonSelection(
+                    buttonInteraction,
                     diningHall,
                     formattedDate,
                     displayName,
@@ -179,8 +166,14 @@ export async function setupInteractionHandlers(
                     currentPeriodId,
                     currentPeriodMenuData
                 );
+            } else if (buttonInteraction.customId === 'back_to_periods') {
+                await buttonInteraction.editReply({
+                    embeds: [mainEmbed],
+                    components: periodButtons
+                });
             }
         }
+        
     });
 
     collector.on('end', () => {
@@ -249,8 +242,8 @@ async function handlePeriodSelection(
 
     const stationSelectionEmbed = createStationSelectionEmbed(displayName, formattedDisplayDate, selectedPeriod);
     
-    // Create station dropdown instead of buttons
-    const stationDropdown = createStationDropdown(stationMap, stationNames, selectedPeriodId);
+    // Create station buttons
+    const stationButtons = createStationButtons(nonEmptyStations, selectedPeriodId);
     
     // Create back button only (no refresh during station selection)
     const navigationButtons = new ActionRowBuilder<ButtonBuilder>()
@@ -261,115 +254,16 @@ async function handlePeriodSelection(
                 .setStyle(ButtonStyle.Danger)
         );
 
+    const allComponents = [...stationButtons, navigationButtons];
+
     await buttonInteraction.editReply({
         embeds: [stationSelectionEmbed],
-        components: [stationDropdown, navigationButtons]
+        components: allComponents
     });
 }
 
-// Handle station dropdown selection
-async function handleStationDropdownSelection(
-    selectInteraction: any,
-    diningHall: any,
-    formattedDate: string,
-    displayName: string,
-    formattedDisplayDate: string,
-    availablePeriods: any[],
-    currentPeriodId: string | null,
-    currentPeriodMenuData: any | null
-) {
-    const selectedValue = selectInteraction.values[0];
-    
-    // Skip default option
-    if (selectedValue === 'default') {
-        return;
-    }
-
-    const parts = selectedValue.split('_');
-    if (parts.length < 2) {
-        await selectInteraction.followUp({
-            content: MENU_CONFIG.MESSAGES.INVALID_STATION_FORMAT,
-            ephemeral: true
-        });
-        return;
-    }
-
-    const periodId = parts[0];
-    const stationId = parts[1];
-    const selectedPeriod = availablePeriods.find(p => p.id === periodId);
-
-    if (!selectedPeriod) {
-        await selectInteraction.followUp({
-            content: MENU_CONFIG.MESSAGES.PERIOD_UNAVAILABLE,
-            ephemeral: true
-        });
-        return;
-    }
-
-    let periodMenuData = currentPeriodMenuData;
-    if (!periodMenuData || currentPeriodId !== periodId) {
-        periodMenuData = await fetchMenu({
-            mode: 'Daily',
-            locationId: diningHall.id,
-            date: formattedDate,
-            periodId: periodId
-        });
-    }
-
-    if (!periodMenuData.Menu?.MenuStations || !periodMenuData.Menu?.MenuProducts) {
-        const errorMsg = formatMessage(MENU_CONFIG.MESSAGES.NO_MENU_AVAILABLE, {
-            diningHall: displayName,
-            date: formattedDisplayDate
-        });
-        await selectInteraction.followUp({
-            content: errorMsg,
-            ephemeral: true
-        });
-        return;
-    }
-
-    const stationMap = organizeMenuByStation(periodMenuData);
-    const stationNames = getStationNames(periodMenuData);
-    const stationName = stationNames.get(stationId) || 'Unknown Station';
-    const stationItems = stationMap.get(stationId) || [];
-
-    let stationContent = '';
-    if (stationItems.length > 0) {
-        stationItems.forEach((item: MenuItem) => {
-            stationContent += `• ${item.MarketingName}\n`;
-        });
-    } else {
-        stationContent = MENU_CONFIG.MESSAGES.STATION_UNAVAILABLE;
-    }
-
-    const stationMenuEmbed = createStationMenuEmbed(
-        displayName, 
-        formattedDisplayDate, 
-        selectedPeriod, 
-        stationName, 
-        stationContent
-    );
-
-    // Create station dropdown with current station selected
-    const stationDropdown = createStationDropdown(stationMap, stationNames, periodId);
-    
-    // Create back button only (no refresh during station selection)  
-    const navigationButtons = new ActionRowBuilder<ButtonBuilder>()
-        .addComponents(
-            new ButtonBuilder()
-                .setCustomId('back_to_periods')
-                .setLabel('Back to Periods')
-                .setStyle(ButtonStyle.Danger)
-        );
-
-    await selectInteraction.editReply({
-        embeds: [stationMenuEmbed],
-        components: [stationDropdown, navigationButtons]
-    });
-}
-
-// Handle station selection (legacy - kept for compatibility)
-async function handleStationSelection(
+// Handle station button selection
+async function handleStationButtonSelection(
     buttonInteraction: ButtonInteraction,
     diningHall: any,
     formattedDate: string,
@@ -379,8 +273,9 @@ async function handleStationSelection(
     currentPeriodId: string | null,
     currentPeriodMenuData: MenuResponse | null
 ) {
-    const parts = buttonInteraction.customId.split('_');
-    if (parts.length < 3) {
+    // Parse station button custom ID: station_{periodId}_{stationId}
+    const customIdParts = buttonInteraction.customId.split('_');
+    if (customIdParts.length < 3) {
         await buttonInteraction.followUp({
             content: MENU_CONFIG.MESSAGES.INVALID_STATION_FORMAT,
             ephemeral: true
@@ -388,10 +283,10 @@ async function handleStationSelection(
         return;
     }
 
-    const periodId = parts[1];
-    const stationId = parts[2];
-    const selectedPeriod = availablePeriods.find(p => p.id === periodId);
+    const periodId = customIdParts[1];
+    const stationId = customIdParts[2];
 
+    const selectedPeriod = availablePeriods.find(p => p.id === periodId);
     if (!selectedPeriod) {
         await buttonInteraction.followUp({
             content: MENU_CONFIG.MESSAGES.PERIOD_UNAVAILABLE,
@@ -400,9 +295,10 @@ async function handleStationSelection(
         return;
     }
 
-    let periodMenuData = currentPeriodMenuData;
-    if (!periodMenuData || currentPeriodId !== periodId) {
-        periodMenuData = await fetchMenu({
+    // Use cached data if we already have it for this period
+    let menuData = currentPeriodMenuData;
+    if (!menuData || currentPeriodId !== periodId) {
+        menuData = await fetchMenu({
             mode: 'Daily',
             locationId: diningHall.id,
             date: formattedDate,
@@ -410,45 +306,42 @@ async function handleStationSelection(
         });
     }
 
-    if (!periodMenuData.Menu?.MenuStations || !periodMenuData.Menu?.MenuProducts) {
-        const errorMsg = formatMessage(MENU_CONFIG.MESSAGES.NO_MENU_AVAILABLE, {
-            diningHall: displayName,
-            date: formattedDisplayDate
-        });
+    if (!menuData?.Menu?.MenuStations || !menuData?.Menu?.MenuProducts) {
         await buttonInteraction.followUp({
-            content: errorMsg,
+            content: MENU_CONFIG.MESSAGES.NO_STATION_ITEMS,
             ephemeral: true
         });
         return;
     }
 
-    const stationMap = organizeMenuByStation(periodMenuData);
-    const stationNames = getStationNames(periodMenuData);
+    const stationMap = organizeMenuByStation(menuData);
+    const stationNames = getStationNames(menuData);
     const stationName = stationNames.get(stationId) || 'Unknown Station';
     const stationItems = stationMap.get(stationId) || [];
 
-    let stationContent = '';
-    if (stationItems.length > 0) {
-        stationItems.forEach((item: MenuItem) => {
-            stationContent += `• ${item.MarketingName}\n`;
+    if (stationItems.length === 0) {
+        await buttonInteraction.followUp({
+            content: MENU_CONFIG.MESSAGES.STATION_UNAVAILABLE,
+            ephemeral: true
         });
-    } else {
-        stationContent = MENU_CONFIG.MESSAGES.STATION_UNAVAILABLE;
+        return;
     }
 
+    // Create station content string
+    const stationContent = stationItems.map(item => `• ${item.MarketingName}`).join('\n');
+
     const stationMenuEmbed = createStationMenuEmbed(
-        displayName, 
-        formattedDisplayDate, 
-        selectedPeriod, 
+        displayName,
+        formattedDisplayDate,
+        selectedPeriod,
         stationName, 
         stationContent
     );
 
+    // Create station buttons with current station selected  
     const nonEmptyStations = Array.from(stationNames.entries())
         .filter(([sId]) => (stationMap.get(sId) || []).length > 0);
-    
-    // Create station dropdown with current station selected
-    const stationDropdown = createStationDropdown(stationMap, stationNames, periodId);
+    const stationButtons = createStationButtons(nonEmptyStations, periodId);
     
     // Create back button only (no refresh during station selection)  
     const navigationButtons = new ActionRowBuilder<ButtonBuilder>()
@@ -459,13 +352,13 @@ async function handleStationSelection(
                 .setStyle(ButtonStyle.Danger)
         );
 
+    const allComponents = [...stationButtons, navigationButtons];
+
     await buttonInteraction.editReply({
         embeds: [stationMenuEmbed],
-        components: [stationDropdown, navigationButtons]
+        components: allComponents
     });
 }
-
-
 
 // Handle collector end
 async function handleCollectorEnd(
