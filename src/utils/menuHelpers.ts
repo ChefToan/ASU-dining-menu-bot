@@ -174,6 +174,10 @@ export function getDiningHallDisplayName(diningHallOption: string, diningHallNam
     let displayName: string;
     if (diningHallOption === 'mu') {
         displayName = MENU_CONFIG.DISPLAY_NAMES.mu;
+    } else if (diningHallOption === 'manzy') {
+        displayName = 'Manzanita';
+    } else if (diningHallOption === 'hassy') {
+        displayName = 'Hassayampa';
     } else {
         displayName = diningHallName;
     }

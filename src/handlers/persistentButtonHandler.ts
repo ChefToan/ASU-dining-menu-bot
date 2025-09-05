@@ -25,7 +25,20 @@ export class PersistentButtonHandler {
      */
     static async handleRefreshButton(interaction: ButtonInteraction): Promise<void> {
         try {
-            await interaction.deferUpdate();
+            // Try to defer the interaction, but handle expired tokens gracefully
+            let canEditReply = true;
+            try {
+                await interaction.deferUpdate();
+            } catch (error: any) {
+                // Handle expired interaction token (15 minute limit)
+                if (error.code === 10062) {
+                    console.log('[PersistentRefresh] Interaction token expired, will create new message');
+                    canEditReply = false;
+                } else {
+                    console.error('[PersistentRefresh] Error deferring interaction:', error);
+                    throw error; // Re-throw unexpected errors
+                }
+            }
 
             // Parse dining hall and date from custom ID
             // Format: refresh_menu_{diningHall}_{date}
@@ -39,27 +52,33 @@ export class PersistentButtonHandler {
                     diningHallOption = parts[2]; // dining hall
                     formattedDate = parts[3]; // date
                 } else {
-                    await interaction.followUp({
-                        content: 'Invalid refresh button. Please use the /menu command again.',
-                        ephemeral: true
-                    });
+                    if (canEditReply) {
+                        await interaction.followUp({
+                            content: 'Invalid refresh button. Please use the /menu command again.',
+                            ephemeral: true
+                        });
+                    }
                     return;
                 }
             } else {
                 // Fallback for old persistent_refresh_menu buttons
-                await interaction.followUp({
-                    content: 'This menu session has expired. Please use the /menu command again.',
-                    ephemeral: true
-                });
+                if (canEditReply) {
+                    await interaction.followUp({
+                        content: 'This menu session has expired. Please use the /menu command again.',
+                        ephemeral: true
+                    });
+                }
                 return;
             }
 
             const diningHall = DINING_HALLS[diningHallOption as keyof typeof DINING_HALLS];
             if (!diningHall) {
-                await interaction.followUp({
-                    content: 'Invalid dining hall configuration. Please use the /menu command again.',
-                    ephemeral: true
-                });
+                if (canEditReply) {
+                    await interaction.followUp({
+                        content: 'Invalid dining hall configuration. Please use the /menu command again.',
+                        ephemeral: true
+                    });
+                }
                 return;
             }
 
@@ -81,11 +100,22 @@ export class PersistentButtonHandler {
                     diningHall: displayName,
                     date: formattedDate
                 });
-                await interaction.editReply({
-                    content: errorMsg,
-                    embeds: [],
-                    components: []
-                });
+                
+                if (canEditReply) {
+                    await interaction.editReply({
+                        content: errorMsg,
+                        embeds: [],
+                        components: []
+                    });
+                } else {
+                    // Create new message when token is expired
+                    const channel = interaction.channel;
+                    if (channel && 'send' in channel) {
+                        await channel.send({
+                            content: errorMsg
+                        });
+                    }
+                }
                 return;
             }
 
@@ -94,10 +124,45 @@ export class PersistentButtonHandler {
             const mainEmbed = createMainEmbed(displayName, formattedDisplayDate);
             const periodButtons = createPeriodButtons(availablePeriods);
 
-            await interaction.editReply({
-                embeds: [mainEmbed],
-                components: periodButtons
-            });
+            if (canEditReply) {
+                await interaction.editReply({
+                    embeds: [mainEmbed],
+                    components: periodButtons
+                });
+            } else {
+                // Create new message when token is expired
+                const channel = interaction.channel;
+                if (channel && 'send' in channel) {
+                    const newMessage = await channel.send({
+                        embeds: [mainEmbed],
+                        components: periodButtons
+                    });
+                    
+                    // Set up interaction handling for the new message
+                    // We need to create a fake interaction object for setupInteractionHandlers
+                    const fakeInteraction = {
+                        ...interaction,
+                        fetchReply: () => Promise.resolve(newMessage),
+                        replied: false,
+                        deferred: false
+                    } as ButtonInteraction;
+                    
+                    await setupInteractionHandlers(
+                        fakeInteraction,
+                        diningHall,
+                        diningHallOption,
+                        formattedDate,
+                        displayName,
+                        formattedDisplayDate,
+                        availablePeriods,
+                        mainEmbed,
+                        periodButtons
+                    );
+                    
+                    console.log('[PersistentRefresh] Successfully refreshed menu with new message');
+                    return;
+                }
+            }
 
             // Set up interaction handling for the refreshed menu (same as original)
             await setupInteractionHandlers(
@@ -116,14 +181,7 @@ export class PersistentButtonHandler {
 
         } catch (error) {
             console.error('Error in persistent refresh:', error);
-            try {
-                await interaction.followUp({
-                    content: 'Failed to refresh menu. Please try the /menu command again.',
-                    ephemeral: true
-                });
-            } catch (replyError) {
-                console.error('Could not send error message:', replyError);
-            }
+            // Don't try to send error messages for expired tokens since they'll fail anyway
         }
     }
 

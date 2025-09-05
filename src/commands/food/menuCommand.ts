@@ -141,7 +141,8 @@ export async function setupInteractionHandlers(
         if (componentInteraction.isButton()) {
             const buttonInteraction = componentInteraction;
             
-            if (buttonInteraction.customId === 'persistent_refresh_menu') {
+            if (buttonInteraction.customId === 'persistent_refresh_menu' || 
+                buttonInteraction.customId.startsWith('refresh_menu_')) {
                 // Skip - handled by global persistent button handler
                 return;
             } else if (buttonInteraction.customId.startsWith('period_')) {
@@ -251,17 +252,13 @@ async function handlePeriodSelection(
     // Create station dropdown instead of buttons
     const stationDropdown = createStationDropdown(stationMap, stationNames, selectedPeriodId);
     
-    // Create back button and refresh button row
+    // Create back button only (no refresh during station selection)
     const navigationButtons = new ActionRowBuilder<ButtonBuilder>()
         .addComponents(
             new ButtonBuilder()
                 .setCustomId('back_to_periods')
                 .setLabel('Back to Periods')
-                .setStyle(ButtonStyle.Danger),
-            new ButtonBuilder()
-                .setCustomId('persistent_refresh_menu')
-                .setLabel('🔄 Refresh Menu')
-                .setStyle(ButtonStyle.Secondary)
+                .setStyle(ButtonStyle.Danger)
         );
 
     await buttonInteraction.editReply({
@@ -356,17 +353,13 @@ async function handleStationDropdownSelection(
     // Create station dropdown with current station selected
     const stationDropdown = createStationDropdown(stationMap, stationNames, periodId);
     
-    // Create back button and refresh button row  
+    // Create back button only (no refresh during station selection)  
     const navigationButtons = new ActionRowBuilder<ButtonBuilder>()
         .addComponents(
             new ButtonBuilder()
                 .setCustomId('back_to_periods')
                 .setLabel('Back to Periods')
-                .setStyle(ButtonStyle.Danger),
-            new ButtonBuilder()
-                .setCustomId('persistent_refresh_menu')
-                .setLabel('🔄 Refresh Menu')
-                .setStyle(ButtonStyle.Secondary)
+                .setStyle(ButtonStyle.Danger)
         );
 
     await selectInteraction.editReply({
@@ -457,17 +450,13 @@ async function handleStationSelection(
     // Create station dropdown with current station selected
     const stationDropdown = createStationDropdown(stationMap, stationNames, periodId);
     
-    // Create back button and refresh button row  
+    // Create back button only (no refresh during station selection)  
     const navigationButtons = new ActionRowBuilder<ButtonBuilder>()
         .addComponents(
             new ButtonBuilder()
                 .setCustomId('back_to_periods')
                 .setLabel('Back to Periods')
-                .setStyle(ButtonStyle.Danger),
-            new ButtonBuilder()
-                .setCustomId('persistent_refresh_menu')
-                .setLabel('🔄 Refresh Menu')
-                .setStyle(ButtonStyle.Secondary)
+                .setStyle(ButtonStyle.Danger)
         );
 
     await buttonInteraction.editReply({

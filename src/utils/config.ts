@@ -5,11 +5,11 @@ export const DINING_HALLS = {
         name: "Barrett",
         id: DiningHallId.Barrett
     },
-    manzi: {
+    manzy: {
         name: "Manzi",
         id: DiningHallId.Manzi
     },
-    hassay: {
+    hassy: {
         name: "Hassay",
         id: DiningHallId.Hassay
     },
@@ -68,8 +68,8 @@ export const MENU_CONFIG = {
     // Dining hall choices for the slash command
     DINING_HALL_CHOICES: [
         { name: 'Barrett', value: 'barrett' },
-        { name: 'Manzi', value: 'manzi' },
-        { name: 'Hassay', value: 'hassay' },
+        { name: 'Manzy', value: 'manzy' },
+        { name: 'Hassy', value: 'hassy' },
         { name: 'Tooker', value: 'tooker' },
         { name: 'MU (Pitchforks)', value: 'mu' },
         { name: 'HIDA', value: 'hida' }

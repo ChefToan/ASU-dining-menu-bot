@@ -64,8 +64,8 @@ export class BaseDiningCommand {
                     .setRequired(false)
                     .addChoices(
                         { name: 'Barrett', value: 'barrett' },
-                        { name: 'Manzi', value: 'manzi' },
-                        { name: 'Hassay', value: 'hassay' },
+                        { name: 'Manzy', value: 'manzy' },
+                        { name: 'Hassy', value: 'hassy' },
                         { name: 'Tooker', value: 'tooker' },
                         { name: 'MU (Pitchforks)', value: 'mu' },
                         { name: 'HIDA', value: 'hida' }
@@ -297,8 +297,8 @@ export class BaseDiningCommand {
             .setPlaceholder('Choose a dining hall...')
             .addOptions([
                 { label: 'Barrett', value: 'barrett', description: 'Barrett Dining Hall' },
-                { label: 'Manzi', value: 'manzi', description: 'Manzi Dining Hall' },
-                { label: 'Hassay', value: 'hassay', description: 'Hassay Dining Hall' },
+                { label: 'Manzy', value: 'manzy', description: 'Manzy Dining Hall' },
+                { label: 'Hassy', value: 'hassy', description: 'Hassy Dining Hall' },
                 { label: 'Tooker', value: 'tooker', description: 'Tooker House Dining' },
                 { label: 'MU (Pitchforks)', value: 'mu', description: 'Memorial Union (Pitchforks)' },
                 { label: 'HIDA', value: 'hida', description: 'HIDA Dining Hall' }
