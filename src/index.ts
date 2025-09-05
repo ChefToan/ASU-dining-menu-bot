@@ -19,6 +19,7 @@ import { db } from './services/database';
 import { podrunService } from './services/podrunService';
 import { diningEventService } from './services/diningEventService';
 import { menuScheduler } from './services/menuScheduler';
+import { PersistentButtonHandler } from './handlers/persistentButtonHandler';
 
 // Environment variables are loaded and validated by env.ts
 
@@ -93,18 +94,45 @@ client.once(Events.ClientReady, async (readyClient) => {
 
 // Handle interaction create events with comprehensive error handling
 client.on(Events.InteractionCreate, async (interaction) => {
-    if (!interaction.isCommand()) return;
+    // Handle slash commands
+    if (interaction.isCommand()) {
+        const command = client.commands.get(interaction.commandName);
+        if (!command) return;
 
-    const command = client.commands.get(interaction.commandName);
+        try {
+            await command.execute(interaction);
+        } catch (error) {
+            await errorHandler.handleCommandError(interaction, error, {
+                commandName: interaction.commandName
+            });
+        }
+        return;
+    }
 
-    if (!command) return;
+    // Handle persistent button interactions
+    if (interaction.isButton() && (
+        interaction.customId === 'persistent_refresh_menu' || 
+        interaction.customId.startsWith('refresh_menu_')
+    )) {
+        try {
+            await PersistentButtonHandler.handleRefreshButton(interaction);
+        } catch (error) {
+            console.error('Error handling persistent button:', error);
+            await interaction.reply({ content: 'Button working!', ephemeral: true });
+        }
+        return;
+    }
 
-    try {
-        await command.execute(interaction);
-    } catch (error) {
-        await errorHandler.handleCommandError(interaction, error, {
-            commandName: interaction.commandName
-        });
+    // Handle dropdown interactions for station selection
+    if (interaction.isStringSelectMenu()) {
+        try {
+            // Station selection dropdowns are handled by the menu command collector
+            // No global handling needed here
+        } catch (error) {
+            console.error('Error handling dropdown interaction:', error);
+            await interaction.reply({ content: 'An error occurred processing this selection.', ephemeral: true });
+        }
+        return;
     }
 });
 

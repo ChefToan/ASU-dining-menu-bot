@@ -2,18 +2,21 @@ import {
     SlashCommandBuilder,
     CommandInteraction,
     ComponentType,
-    ButtonInteraction
+    ButtonInteraction,
+    ActionRowBuilder,
+    ButtonBuilder,
+    ButtonStyle
 } from 'discord.js';
 import { fetchMenu, organizeMenuByStation, getStationNames } from '../../utils/api';
 import { DINING_HALLS, MENU_CONFIG } from '../../utils/config';
 import { MenuResponse, MenuItem } from '../type/menu';
-import { menuCommandContextService } from '../../services/menuCommandContextService';
 import { menuCacheService } from '../../services/menuCacheService';
 import {
     Period,
     parsePeriods,
     createPeriodButtons,
     createStationButtons,
+    createStationDropdown,
     createRefreshButton,
     getDiningHallDisplayName,
     formatDateForDisplay,
@@ -74,23 +77,18 @@ export async function execute(interaction: CommandInteraction) {
         const mainEmbed = createMainEmbed(displayName, formattedDisplayDate);
         const periodButtons = createPeriodButtons(availablePeriods);
 
+        // Add persistent refresh button to the period buttons
+        const refreshButton = createRefreshButton(diningHallOption, formattedDate);
+        const allComponents = [...periodButtons, refreshButton];
+
         await interaction.editReply({
             embeds: [mainEmbed],
-            components: periodButtons
+            components: allComponents
         });
 
-        // Store context for persistent refresh functionality
-        const message = await interaction.fetchReply();
-        await menuCommandContextService.storeContext(
-            message.id,
-            diningHallOption,
-            formattedDate,
-            interaction.guildId || '',
-            interaction.channelId || '',
-            interaction.user.id
-        );
+        // Context is now embedded in the refresh button custom ID
 
-        // Set up interaction handling
+        // Set up interaction handling for temporary buttons (period/station selection)
         await setupInteractionHandlers(
             interaction,
             diningHall,
@@ -100,7 +98,7 @@ export async function execute(interaction: CommandInteraction) {
             formattedDisplayDate,
             availablePeriods,
             mainEmbed,
-            periodButtons
+            allComponents
         );
 
     } catch (error) {
@@ -122,16 +120,15 @@ async function setupInteractionHandlers(
 ) {
     const message = await interaction.fetchReply();
     const collector = message.createMessageComponentCollector({
-        componentType: ComponentType.Button,
         time: MENU_CONFIG.INTERACTION_TIMEOUT
     });
 
     let currentPeriodId: string | null = null;
     let currentPeriodMenuData: MenuResponse | null = null;
 
-    collector.on('collect', async (buttonInteraction: ButtonInteraction) => {
+    collector.on('collect', async (componentInteraction) => {
         try {
-            await buttonInteraction.deferUpdate();
+            await componentInteraction.deferUpdate();
         } catch (error: any) {
             // Handle expired interaction token (15 minute limit)
             if (error.code === 10062) {
@@ -144,40 +141,53 @@ async function setupInteractionHandlers(
             }
         }
 
-        if (buttonInteraction.customId === 'refresh_menu') {
-            await handleContextualRefresh(buttonInteraction);
-        } else if (buttonInteraction.customId.startsWith('period_')) {
-            await handlePeriodSelection(
-                buttonInteraction, 
-                diningHall, 
-                formattedDate, 
-                displayName, 
-                formattedDisplayDate, 
-                availablePeriods,
-                currentPeriodId,
-                currentPeriodMenuData
-            );
-        } else if (buttonInteraction.customId.startsWith('station_')) {
-            await handleStationSelection(
-                buttonInteraction, 
-                diningHall, 
-                formattedDate, 
-                displayName, 
-                formattedDisplayDate, 
-                availablePeriods,
-                currentPeriodId,
-                currentPeriodMenuData
-            );
-        } else if (buttonInteraction.customId === 'back_to_periods') {
-            await buttonInteraction.editReply({
-                embeds: [mainEmbed],
-                components: periodButtons
-            });
+        // Handle button interactions
+        if (componentInteraction.isButton()) {
+            const buttonInteraction = componentInteraction;
+            
+            if (buttonInteraction.customId === 'persistent_refresh_menu') {
+                // Skip - handled by global persistent button handler
+                return;
+            } else if (buttonInteraction.customId.startsWith('period_')) {
+                await handlePeriodSelection(
+                    buttonInteraction, 
+                    diningHall, 
+                    formattedDate, 
+                    displayName, 
+                    formattedDisplayDate, 
+                    availablePeriods,
+                    currentPeriodId,
+                    currentPeriodMenuData
+                );
+            } else if (buttonInteraction.customId === 'back_to_periods') {
+                await buttonInteraction.editReply({
+                    embeds: [mainEmbed],
+                    components: periodButtons
+                });
+            }
+        }
+        
+        // Handle dropdown interactions
+        else if (componentInteraction.isStringSelectMenu()) {
+            const selectInteraction = componentInteraction;
+            
+            if (selectInteraction.customId.startsWith('station_select_')) {
+                await handleStationDropdownSelection(
+                    selectInteraction,
+                    diningHall,
+                    formattedDate,
+                    displayName,
+                    formattedDisplayDate,
+                    availablePeriods,
+                    currentPeriodId,
+                    currentPeriodMenuData
+                );
+            }
         }
     });
 
     collector.on('end', () => {
-        handleCollectorEnd(interaction, diningHall, displayName, formattedDisplayDate);
+        handleCollectorEnd(interaction, diningHall, diningHallOption, formattedDate, displayName, formattedDisplayDate);
     });
 }
 
@@ -241,15 +251,135 @@ async function handlePeriodSelection(
     }
 
     const stationSelectionEmbed = createStationSelectionEmbed(displayName, formattedDisplayDate, selectedPeriod);
-    const stationButtons = createStationButtons(nonEmptyStations, selectedPeriodId);
+    
+    // Create station dropdown instead of buttons
+    const stationDropdown = createStationDropdown(stationMap, stationNames, selectedPeriodId);
+    
+    // Create back button and refresh button row
+    const navigationButtons = new ActionRowBuilder<ButtonBuilder>()
+        .addComponents(
+            new ButtonBuilder()
+                .setCustomId('back_to_periods')
+                .setLabel('Back to Periods')
+                .setStyle(ButtonStyle.Danger),
+            new ButtonBuilder()
+                .setCustomId('persistent_refresh_menu')
+                .setLabel('🔄 Refresh Menu')
+                .setStyle(ButtonStyle.Secondary)
+        );
 
     await buttonInteraction.editReply({
         embeds: [stationSelectionEmbed],
-        components: stationButtons
+        components: [stationDropdown, navigationButtons]
     });
 }
 
-// Handle station selection
+// Handle station dropdown selection
+async function handleStationDropdownSelection(
+    selectInteraction: any,
+    diningHall: any,
+    formattedDate: string,
+    displayName: string,
+    formattedDisplayDate: string,
+    availablePeriods: any[],
+    currentPeriodId: string | null,
+    currentPeriodMenuData: any | null
+) {
+    const selectedValue = selectInteraction.values[0];
+    
+    // Skip default option
+    if (selectedValue === 'default') {
+        return;
+    }
+
+    const parts = selectedValue.split('_');
+    if (parts.length < 2) {
+        await selectInteraction.followUp({
+            content: MENU_CONFIG.MESSAGES.INVALID_STATION_FORMAT,
+            ephemeral: true
+        });
+        return;
+    }
+
+    const periodId = parts[0];
+    const stationId = parts[1];
+    const selectedPeriod = availablePeriods.find(p => p.id === periodId);
+
+    if (!selectedPeriod) {
+        await selectInteraction.followUp({
+            content: MENU_CONFIG.MESSAGES.PERIOD_UNAVAILABLE,
+            ephemeral: true
+        });
+        return;
+    }
+
+    let periodMenuData = currentPeriodMenuData;
+    if (!periodMenuData || currentPeriodId !== periodId) {
+        periodMenuData = await fetchMenu({
+            mode: 'Daily',
+            locationId: diningHall.id,
+            date: formattedDate,
+            periodId: periodId
+        });
+    }
+
+    if (!periodMenuData.Menu?.MenuStations || !periodMenuData.Menu?.MenuProducts) {
+        const errorMsg = formatMessage(MENU_CONFIG.MESSAGES.NO_MENU_AVAILABLE, {
+            diningHall: displayName,
+            date: formattedDisplayDate
+        });
+        await selectInteraction.followUp({
+            content: errorMsg,
+            ephemeral: true
+        });
+        return;
+    }
+
+    const stationMap = organizeMenuByStation(periodMenuData);
+    const stationNames = getStationNames(periodMenuData);
+    const stationName = stationNames.get(stationId) || 'Unknown Station';
+    const stationItems = stationMap.get(stationId) || [];
+
+    let stationContent = '';
+    if (stationItems.length > 0) {
+        stationItems.forEach((item: MenuItem) => {
+            stationContent += `• ${item.MarketingName}\n`;
+        });
+    } else {
+        stationContent = MENU_CONFIG.MESSAGES.STATION_UNAVAILABLE;
+    }
+
+    const stationMenuEmbed = createStationMenuEmbed(
+        displayName, 
+        formattedDisplayDate, 
+        selectedPeriod, 
+        stationName, 
+        stationContent
+    );
+
+    // Create station dropdown with current station selected
+    const stationDropdown = createStationDropdown(stationMap, stationNames, periodId);
+    
+    // Create back button and refresh button row  
+    const navigationButtons = new ActionRowBuilder<ButtonBuilder>()
+        .addComponents(
+            new ButtonBuilder()
+                .setCustomId('back_to_periods')
+                .setLabel('Back to Periods')
+                .setStyle(ButtonStyle.Danger),
+            new ButtonBuilder()
+                .setCustomId('persistent_refresh_menu')
+                .setLabel('🔄 Refresh Menu')
+                .setStyle(ButtonStyle.Secondary)
+        );
+
+    await selectInteraction.editReply({
+        embeds: [stationMenuEmbed],
+        components: [stationDropdown, navigationButtons]
+    });
+}
+
+// Handle station selection (legacy - kept for compatibility)
 async function handleStationSelection(
     buttonInteraction: ButtonInteraction,
     diningHall: any,
@@ -327,222 +457,43 @@ async function handleStationSelection(
 
     const nonEmptyStations = Array.from(stationNames.entries())
         .filter(([sId]) => (stationMap.get(sId) || []).length > 0);
-    const stationButtons = createStationButtons(nonEmptyStations, periodId, stationId);
+    
+    // Create station dropdown with current station selected
+    const stationDropdown = createStationDropdown(stationMap, stationNames, periodId);
+    
+    // Create back button and refresh button row  
+    const navigationButtons = new ActionRowBuilder<ButtonBuilder>()
+        .addComponents(
+            new ButtonBuilder()
+                .setCustomId('back_to_periods')
+                .setLabel('Back to Periods')
+                .setStyle(ButtonStyle.Danger),
+            new ButtonBuilder()
+                .setCustomId('persistent_refresh_menu')
+                .setLabel('🔄 Refresh Menu')
+                .setStyle(ButtonStyle.Secondary)
+        );
 
     await buttonInteraction.editReply({
         embeds: [stationMenuEmbed],
-        components: stationButtons
+        components: [stationDropdown, navigationButtons]
     });
 }
 
-// Handle context-aware refresh button
-async function handleContextualRefresh(buttonInteraction: ButtonInteraction) {
-    try {
-        // Get the original command context from database
-        const context = await menuCommandContextService.getContext(buttonInteraction.message.id);
-        
-        if (!context) {
-            await buttonInteraction.followUp({
-                content: 'This menu session has expired. Please use the /menu command again.',
-                ephemeral: true
-            });
-            return;
-        }
 
-        const diningHall = DINING_HALLS[context.dining_hall as keyof typeof DINING_HALLS];
-        if (!diningHall) {
-            await buttonInteraction.followUp({
-                content: 'Invalid dining hall configuration. Please use the /menu command again.',
-                ephemeral: true
-            });
-            return;
-        }
-
-        const displayName = getDiningHallDisplayName(context.dining_hall, diningHall.name);
-        const formattedDisplayDate = formatDateForDisplay(new Date(context.original_date));
-
-        // Determine if we should use cache or API based on date
-        const shouldUseCache = menuCommandContextService.shouldUseCache(context.original_date);
-        let menuData: MenuResponse;
-
-        console.log(`[ContextualRefresh] Refreshing menu for ${context.dining_hall} on ${context.original_date}, useCache: ${shouldUseCache}`);
-
-        if (shouldUseCache) {
-            // Try cache first for today's data
-            const cacheKey = menuCacheService.generateCacheKey(diningHall.id, context.original_date);
-            const cachedData = await menuCacheService.get(cacheKey);
-            
-            if (cachedData) {
-                menuData = cachedData;
-                console.log('[ContextualRefresh] Using cached data');
-            } else {
-                // Cache miss, fetch from API and cache it
-                menuData = await fetchMenu({
-                    mode: 'Daily',
-                    locationId: diningHall.id,
-                    date: context.original_date,
-                    periodId: ""
-                });
-                await menuCacheService.set(cacheKey, menuData);
-                console.log('[ContextualRefresh] Fetched fresh data and cached it');
-            }
-        } else {
-            // Past dates: fetch directly from API (no caching)
-            menuData = await fetchMenu({
-                mode: 'Daily',
-                locationId: diningHall.id,
-                date: context.original_date,
-                periodId: ""
-            });
-            console.log('[ContextualRefresh] Fetched fresh data from API (past date)');
-        }
-
-        if (!menuData.Menu?.MenuPeriods?.length) {
-            const errorMsg = formatMessage(MENU_CONFIG.MESSAGES.NO_MENU_AVAILABLE, {
-                diningHall: displayName,
-                date: context.original_date
-            });
-            await buttonInteraction.editReply({
-                content: errorMsg,
-                embeds: [],
-                components: []
-            });
-            return;
-        }
-
-        // Recreate the exact same UI with fresh data
-        const availablePeriods = parsePeriods(menuData.Menu.MenuPeriods);
-        const mainEmbed = createMainEmbed(displayName, formattedDisplayDate);
-        const periodButtons = createPeriodButtons(availablePeriods);
-
-        try {
-            // Try to edit the reply first
-            await buttonInteraction.editReply({
-                embeds: [mainEmbed],
-                components: periodButtons
-            });
-        } catch (error: any) {
-            // If editing fails due to expired token, create a new message
-            if (error.code === 10062 || error.code === 50027) { // Unknown interaction or Invalid Webhook Token
-                console.log('[ContextualRefresh] Token expired, creating new message');
-                
-                const channel = buttonInteraction.channel;
-                if (channel && 'send' in channel) {
-                    const newMessage = await channel.send({
-                        embeds: [mainEmbed],
-                        components: periodButtons
-                    });
-                
-                    if (newMessage) {
-                        // Update context to point to new message
-                        await menuCommandContextService.updateMessageId(buttonInteraction.message.id, newMessage.id);
-                        console.log(`[ContextualRefresh] Created new message ${newMessage.id} and updated context`);
-                    }
-                }
-                return;
-            } else {
-                throw error; // Re-throw unexpected errors
-            }
-        }
-
-        // Update context with new message ID (the edited reply maintains the same message ID)
-        // So we don't need to update the context
-
-        // Set up new interaction handling with regenerated buttons
-        await setupInteractionHandlers(
-            buttonInteraction,
-            diningHall,
-            context.dining_hall,
-            context.original_date,
-            displayName,
-            formattedDisplayDate,
-            availablePeriods,
-            mainEmbed,
-            periodButtons
-        );
-
-    } catch (error) {
-        console.error('Error in contextual refresh:', error);
-        await buttonInteraction.followUp({
-            content: 'Failed to refresh menu. Please try the /menu command again.',
-            ephemeral: true
-        });
-    }
-}
-
-// Handle refresh button (legacy - kept for compatibility)
-async function handleRefresh(
-    buttonInteraction: ButtonInteraction, 
-    diningHall: any,
-    displayName: string,
-    formattedDisplayDate: string
-) {
-    try {
-        // Re-fetch menu data with current date to get updated periods
-        const { formattedDate } = formatDateForAPI();
-        
-        const menuData = await fetchMenu({
-            mode: 'Daily',
-            locationId: diningHall.id,
-            date: formattedDate,
-            periodId: ""
-        });
-
-        if (!menuData.Menu?.MenuPeriods?.length) {
-            const errorMsg = formatMessage(MENU_CONFIG.MESSAGES.NO_MENU_AVAILABLE, {
-                diningHall: displayName,
-                date: formattedDate
-            });
-            await buttonInteraction.editReply({
-                content: errorMsg,
-                embeds: [],
-                components: []
-            });
-            return;
-        }
-
-        // Parse updated periods and recreate UI
-        const availablePeriods = parsePeriods(menuData.Menu.MenuPeriods);
-        const mainEmbed = createMainEmbed(displayName, formattedDisplayDate);
-        const periodButtons = createPeriodButtons(availablePeriods);
-
-        await buttonInteraction.editReply({
-            embeds: [mainEmbed],
-            components: periodButtons
-        });
-
-        // Note: Legacy refresh doesn't have context, so we pass empty string for diningHallOption
-        // This path should rarely be used now that we have contextual refresh
-        await setupInteractionHandlers(
-            buttonInteraction,
-            diningHall,
-            '', // Legacy refresh doesn't know the original dining hall option
-            formattedDate,
-            displayName,
-            formattedDisplayDate,
-            availablePeriods,
-            mainEmbed,
-            periodButtons
-        );
-    } catch (error) {
-        console.error('Error refreshing menu:', error);
-        await buttonInteraction.followUp({
-            content: 'Failed to refresh menu. Please try again.',
-            ephemeral: true
-        });
-    }
-}
 
 // Handle collector end
 async function handleCollectorEnd(
     interaction: CommandInteraction | ButtonInteraction,
     diningHall: any,
+    diningHallOption: string,
+    formattedDate: string,
     displayName: string,
     formattedDisplayDate: string
 ) {
     try {
         if (interaction.replied || interaction.deferred) {
-            const refreshRow = createRefreshButton();
+            const refreshRow = createRefreshButton(diningHallOption, formattedDate);
             await interaction.editReply({ components: [refreshRow] })
                 .catch(error => console.error('Error adding refresh button:', error));
             
@@ -551,7 +502,8 @@ async function handleCollectorEnd(
             const refreshCollector = message.createMessageComponentCollector({
                 componentType: ComponentType.Button,
                 time: MENU_CONFIG.REFRESH_TIMEOUT,
-                filter: (buttonInteraction) => buttonInteraction.customId === 'refresh_menu'
+                filter: (buttonInteraction) => buttonInteraction.customId === 'persistent_refresh_menu' || 
+                                             buttonInteraction.customId.startsWith('refresh_menu_')
             });
 
             refreshCollector.on('collect', async (buttonInteraction: ButtonInteraction) => {
@@ -567,7 +519,8 @@ async function handleCollectorEnd(
                         return;
                     }
                 }
-                await handleContextualRefresh(buttonInteraction);
+                // Skip - handled by global persistent button handler
+                return;
             });
 
             refreshCollector.on('end', () => {

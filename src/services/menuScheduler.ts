@@ -1,5 +1,4 @@
 import { menuService } from './menuService';
-import { menuCommandContextService } from './menuCommandContextService';
 
 export class MenuScheduler {
     private preloadInterval?: NodeJS.Timeout;
@@ -109,13 +108,10 @@ export class MenuScheduler {
             // Clean up menu cache entries
             const deletedCacheCount = await menuService.cleanupCache();
             
-            // Clean up expired menu command contexts
-            const deletedContextCount = await menuCommandContextService.cleanupExpired();
-            
-            if (deletedCacheCount > 0 || deletedContextCount > 0) {
-                console.log(`[MenuScheduler] Cleaned up ${deletedCacheCount} expired cache entries and ${deletedContextCount} expired command contexts`);
+            if (deletedCacheCount > 0) {
+                console.log(`[MenuScheduler] Cleaned up ${deletedCacheCount} expired cache entries`);
             } else {
-                console.log('[MenuScheduler] No expired cache entries or contexts to clean up');
+                console.log('[MenuScheduler] No expired cache entries to clean up');
             }
             
         } catch (error) {

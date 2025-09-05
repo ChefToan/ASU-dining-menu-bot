@@ -3,7 +3,9 @@ import {
     ButtonBuilder,
     ButtonStyle,
     EmbedBuilder,
-    Colors
+    Colors,
+    StringSelectMenuBuilder,
+    StringSelectMenuOptionBuilder
 } from 'discord.js';
 import { MenuPeriod } from '../commands/type/menu';
 import { MENU_CONFIG } from './config';
@@ -116,13 +118,54 @@ export function createStationButtons(
 }
 
 // Helper function to create refresh button
-export function createRefreshButton(): ActionRowBuilder<ButtonBuilder> {
+export function createRefreshButton(diningHall?: string, date?: string): ActionRowBuilder<ButtonBuilder> {
+    // If dining hall and date are provided, encode them in the custom ID
+    // Format: refresh_menu_{diningHall}_{date}
+    const customId = diningHall && date 
+        ? `refresh_menu_${diningHall}_${date}`
+        : 'persistent_refresh_menu'; // fallback for compatibility
+        
     return new ActionRowBuilder<ButtonBuilder>()
         .addComponents(
             new ButtonBuilder()
-                .setCustomId('refresh_menu')
-                .setLabel('Refresh Menu')
+                .setCustomId(customId)
+                .setLabel('🔄 Refresh Menu')
                 .setStyle(ButtonStyle.Secondary)
+        );
+}
+
+// Helper function to create station dropdown for a specific period
+export function createStationDropdown(
+    stationMap: Map<string, any[]>, 
+    stationNames: Map<string, string>, 
+    periodId: string
+): ActionRowBuilder<StringSelectMenuBuilder> {
+    const nonEmptyStations = Array.from(stationNames.entries())
+        .filter(([stationId]) => (stationMap.get(stationId) || []).length > 0)
+        .slice(0, 25); // Discord limit of 25 options
+
+    const options = nonEmptyStations.map(([stationId, stationName]) => 
+        new StringSelectMenuOptionBuilder()
+            .setLabel(stationName)
+            .setValue(`${periodId}_${stationId}`)
+            .setDescription(`View ${stationName} menu items`)
+    );
+
+    // Add default option
+    options.unshift(
+        new StringSelectMenuOptionBuilder()
+            .setLabel('Select a station')
+            .setValue('default')
+            .setDescription('Choose a dining station to view menu')
+            .setDefault(true)
+    );
+
+    return new ActionRowBuilder<StringSelectMenuBuilder>()
+        .addComponents(
+            new StringSelectMenuBuilder()
+                .setCustomId(`station_select_${periodId}`)
+                .setPlaceholder('Select a dining station...')
+                .addOptions(options)
         );
 }
 
