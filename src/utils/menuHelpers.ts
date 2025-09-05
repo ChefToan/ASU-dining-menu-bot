@@ -3,9 +3,7 @@ import {
     ButtonBuilder,
     ButtonStyle,
     EmbedBuilder,
-    Colors,
-    StringSelectMenuBuilder,
-    StringSelectMenuOptionBuilder
+    Colors
 } from 'discord.js';
 import { MenuPeriod } from '../commands/type/menu';
 import { MENU_CONFIG } from './config';
@@ -102,18 +100,6 @@ export function createStationButtons(
         rows.push(row);
     }
 
-    // Add a back button to return to period selection if we're showing stations
-    if (stations.length > 0) {
-        const backRow = new ActionRowBuilder<ButtonBuilder>()
-            .addComponents(
-                new ButtonBuilder()
-                    .setCustomId('back_to_periods')
-                    .setLabel('Back to Periods')
-                    .setStyle(ButtonStyle.Danger)
-            );
-        rows.push(backRow);
-    }
-
     return rows;
 }
 
@@ -134,40 +120,6 @@ export function createRefreshButton(diningHall?: string, date?: string): ActionR
         );
 }
 
-// Helper function to create station dropdown for a specific period
-export function createStationDropdown(
-    stationMap: Map<string, any[]>, 
-    stationNames: Map<string, string>, 
-    periodId: string
-): ActionRowBuilder<StringSelectMenuBuilder> {
-    const nonEmptyStations = Array.from(stationNames.entries())
-        .filter(([stationId]) => (stationMap.get(stationId) || []).length > 0)
-        .slice(0, 25); // Discord limit of 25 options
-
-    const options = nonEmptyStations.map(([stationId, stationName]) => 
-        new StringSelectMenuOptionBuilder()
-            .setLabel(stationName)
-            .setValue(`${periodId}_${stationId}`)
-            .setDescription(`View ${stationName} menu items`)
-    );
-
-    // Add default option
-    options.unshift(
-        new StringSelectMenuOptionBuilder()
-            .setLabel('Select a station')
-            .setValue('default')
-            .setDescription('Choose a dining station to view menu')
-            .setDefault(true)
-    );
-
-    return new ActionRowBuilder<StringSelectMenuBuilder>()
-        .addComponents(
-            new StringSelectMenuBuilder()
-                .setCustomId(`station_select_${periodId}`)
-                .setPlaceholder('Select a dining station...')
-                .addOptions(options)
-        );
-}
 
 // Helper function to get display name for dining hall
 export function getDiningHallDisplayName(diningHallOption: string, diningHallName: string): string {
