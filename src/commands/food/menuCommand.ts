@@ -72,18 +72,14 @@ export async function execute(interaction: CommandInteraction) {
             return;
         }
 
-        // Parse periods and create UI
+        // Parse periods and create UI (no refresh button initially)
         const availablePeriods = parsePeriods(menuData.Menu.MenuPeriods);
         const mainEmbed = createMainEmbed(displayName, formattedDisplayDate);
         const periodButtons = createPeriodButtons(availablePeriods);
 
-        // Add persistent refresh button to the period buttons
-        const refreshButton = createRefreshButton(diningHallOption, formattedDate);
-        const allComponents = [...periodButtons, refreshButton];
-
         await interaction.editReply({
             embeds: [mainEmbed],
-            components: allComponents
+            components: periodButtons
         });
 
         // Context is now embedded in the refresh button custom ID
@@ -98,7 +94,7 @@ export async function execute(interaction: CommandInteraction) {
             formattedDisplayDate,
             availablePeriods,
             mainEmbed,
-            allComponents
+            periodButtons
         );
 
     } catch (error) {
@@ -107,7 +103,7 @@ export async function execute(interaction: CommandInteraction) {
 }
 
 // Set up interaction handlers for the menu command
-async function setupInteractionHandlers(
+export async function setupInteractionHandlers(
     interaction: CommandInteraction | ButtonInteraction,
     diningHall: any,
     diningHallOption: string,

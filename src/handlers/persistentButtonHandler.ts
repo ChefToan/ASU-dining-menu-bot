@@ -12,6 +12,9 @@ import {
 } from '../utils/menuHelpers';
 import { MENU_CONFIG } from '../utils/config';
 
+// Import the setupInteractionHandlers function from menuCommand
+import { setupInteractionHandlers } from '../commands/food/menuCommand';
+
 /**
  * Simplified persistent button handler
  */
@@ -86,21 +89,30 @@ export class PersistentButtonHandler {
                 return;
             }
 
-            // Recreate the exact same UI as the original menu command
+            // Recreate the exact same UI as the original menu command (no refresh button initially)
             const availablePeriods = parsePeriods(menuData.Menu.MenuPeriods);
             const mainEmbed = createMainEmbed(displayName, formattedDisplayDate);
             const periodButtons = createPeriodButtons(availablePeriods);
-            
-            // Add persistent refresh button to the period buttons
-            const refreshButton = createRefreshButton(diningHallOption, formattedDate);
-            const allComponents = [...periodButtons, refreshButton];
 
             await interaction.editReply({
                 embeds: [mainEmbed],
-                components: allComponents
+                components: periodButtons
             });
 
-            console.log('[PersistentRefresh] Successfully refreshed menu');
+            // Set up interaction handling for the refreshed menu (same as original)
+            await setupInteractionHandlers(
+                interaction,
+                diningHall,
+                diningHallOption,
+                formattedDate,
+                displayName,
+                formattedDisplayDate,
+                availablePeriods,
+                mainEmbed,
+                periodButtons
+            );
+
+            console.log('[PersistentRefresh] Successfully refreshed menu with full interaction handling');
 
         } catch (error) {
             console.error('Error in persistent refresh:', error);
