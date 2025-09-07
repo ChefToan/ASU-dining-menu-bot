@@ -9,9 +9,21 @@ interface RequiredEnvVars {
     SUPABASE_ANON_KEY: string;
 }
 
+interface OptionalEnvVars {
+    PRODUCTION_CA_ROLE_ID?: string;
+    TEST_CA_ROLE_ID?: string;
+    PRODUCTION_SERVER_ID?: string;
+    PRODUCTION_CHANNEL_ID?: string;
+    TEST_SERVER_ID?: string;
+    TEST_CHANNEL_ID?: string;
+    ASU_MENU_API_URL?: string;
+    WEEKLY_REPORT_SURVEY_URL?: string;
+}
+
 class EnvironmentValidator {
     private static instance: EnvironmentValidator;
     private envVars!: RequiredEnvVars;
+    private optionalVars!: OptionalEnvVars;
 
     private constructor() {
         this.validateAndLoadEnv();
@@ -48,11 +60,26 @@ class EnvironmentValidator {
             SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY!
         };
 
+        this.optionalVars = {
+            PRODUCTION_CA_ROLE_ID: process.env.PRODUCTION_CA_ROLE_ID,
+            TEST_CA_ROLE_ID: process.env.TEST_CA_ROLE_ID,
+            PRODUCTION_SERVER_ID: process.env.PRODUCTION_SERVER_ID,
+            PRODUCTION_CHANNEL_ID: process.env.PRODUCTION_CHANNEL_ID,
+            TEST_SERVER_ID: process.env.TEST_SERVER_ID,
+            TEST_CHANNEL_ID: process.env.TEST_CHANNEL_ID,
+            ASU_MENU_API_URL: process.env.ASU_MENU_API_URL,
+            WEEKLY_REPORT_SURVEY_URL: process.env.WEEKLY_REPORT_SURVEY_URL
+        };
+
         console.log('✅ Environment variables validated successfully');
     }
 
     public get(key: keyof RequiredEnvVars): string {
         return this.envVars[key];
+    }
+
+    public getOptional(key: keyof OptionalEnvVars): string | undefined {
+        return this.optionalVars[key];
     }
 
     public getAll(): RequiredEnvVars {

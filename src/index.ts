@@ -19,6 +19,7 @@ import { db } from './services/database';
 import { podrunService } from './services/podrunService';
 import { diningEventService } from './services/diningEventService';
 import { menuScheduler } from './services/menuScheduler';
+import { WeeklyReportScheduler } from './services/WeeklyReportMessage';
 import { PersistentButtonHandler } from './handlers/persistentButtonHandler';
 
 // Environment variables are loaded and validated by env.ts
@@ -30,6 +31,14 @@ const client = new Client({
         GatewayIntentBits.GuildMessages,
     ]
 });
+
+// Create weekly report scheduler
+let weeklyReportScheduler: WeeklyReportScheduler;
+
+// Global reference for testing (can be removed later)
+declare global {
+    var testScheduler: WeeklyReportScheduler | undefined;
+}
 
 // Extend the Client interface to include commands
 declare module 'discord.js' {
@@ -90,6 +99,13 @@ client.once(Events.ClientReady, async (readyClient) => {
     menuScheduler.start();
     console.log('✅ Menu scheduler started - menus will refresh every 6 hours');
 
+    // Initialize and start weekly report scheduler
+    console.log('Starting weekly report scheduler...');
+    weeklyReportScheduler = new WeeklyReportScheduler(client);
+    weeklyReportScheduler.start();
+    global.testScheduler = weeklyReportScheduler; // For manual testing
+    console.log('✅ Weekly report scheduler started - will send messages on Sundays at 12pm and 11:30pm Arizona time');
+
 });
 
 // Handle interaction create events with comprehensive error handling
@@ -111,7 +127,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
     // Handle persistent button interactions
     if (interaction.isButton() && (
-        interaction.customId === 'persistent_refresh_menu' || 
+        interaction.customId === 'persistent_refresh_menu' ||
         interaction.customId.startsWith('refresh_menu_')
     )) {
         try {
@@ -216,6 +232,11 @@ async function gracefulShutdown(signal: string) {
 
         // Stop menu scheduler
         menuScheduler.stop();
+
+        // Stop weekly report scheduler
+        if (weeklyReportScheduler) {
+            weeklyReportScheduler.stop();
+        }
 
         // Set a timeout to force exit after 3 seconds
         const forceExitTimeout = setTimeout(() => {
