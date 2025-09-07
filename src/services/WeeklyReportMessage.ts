@@ -83,8 +83,8 @@ export class WeeklyReportScheduler {
         if (day !== 0) return false;
         
         // Check if it's 12:00 PM (noon) or 11:30 PM
-        const isNoon = hour === 12 && minute === 0;
-        const isEvening = hour === 12 && minute === 20;
+        const isNoon = hour === 12 && minute === 30;
+        const isEvening = hour === 23 && minute === 30;
         
         const shouldSend = isNoon || isEvening;
         console.log(`[WeeklyReportScheduler] DEBUG - Should send report: ${shouldSend}`);
@@ -105,28 +105,26 @@ export class WeeklyReportScheduler {
         // Determine if this is the first (12 PM) or second (11:30 PM) message
         const messageNumber = hour === 12 ? '1/2' : '2/2';
         
-        // TEMPORARILY COMMENTED OUT - Send to production server
-        // const productionRoleId = env.getOptional('PRODUCTION_CA_ROLE_ID');
-        // const productionServerId = env.getOptional('PRODUCTION_SERVER_ID');
-        // const productionChannelId = env.getOptional('PRODUCTION_CHANNEL_ID');
-        // const weeklyReportUrl = env.getOptional('WEEKLY_REPORT_SURVEY_URL');
-        
-        // if (!productionRoleId || !productionServerId || !productionChannelId || !weeklyReportUrl) {
-        //     console.error('[WeeklyReportScheduler] Missing required environment variables for weekly report');
-        //     return;
-        // }
-        
-        // const productionMessage = `<@&${productionRoleId}> Weekly Report Reminder! (${messageNumber})
-        // Weekly Report Link: ${weeklyReportUrl}`;
-        // await this.sendToChannel(productionChannelId, productionServerId, productionMessage);
-
-        // console.log(`[WeeklyReportScheduler] Weekly report (${messageNumber}) sent to PRODUCTION SERVER`);
-
-        // Send to test server instead
+        // Get environment variables
+        const productionRoleId = env.getOptional('PRODUCTION_CA_ROLE_ID');
+        const productionServerId = env.getOptional('PRODUCTION_SERVER_ID');
+        const productionChannelId = env.getOptional('PRODUCTION_CHANNEL_ID');
         const testRoleId = env.getOptional('TEST_CA_ROLE_ID');
         const testServerId = env.getOptional('TEST_SERVER_ID');
         const testChannelId = env.getOptional('TEST_CHANNEL_ID');
         const weeklyReportUrl = env.getOptional('WEEKLY_REPORT_SURVEY_URL');
+        
+        // Send to production server
+        if (productionRoleId && productionServerId && productionChannelId && weeklyReportUrl) {
+            const productionMessage = `<@&${productionRoleId}> Weekly Report Reminder! (${messageNumber})
+Weekly Report Link: ${weeklyReportUrl}`;
+            await this.sendToChannel(productionChannelId, productionServerId, productionMessage);
+            console.log(`[WeeklyReportScheduler] Weekly report (${messageNumber}) sent to PRODUCTION SERVER`);
+        } else {
+            console.log('[WeeklyReportScheduler] Missing production server environment variables - skipping production message');
+        }
+
+        // Also send to test server
         
         // TEMP DEBUG LOGGING
         console.log('[WeeklyReportScheduler] DEBUG - Environment variables:');
@@ -181,40 +179,23 @@ Weekly Report Link: ${weeklyReportUrl}`;
      * Manually trigger a test message (sends to test server)
      */
     async sendTestMessage(): Promise<void> {
-        console.log('[WeeklyReportScheduler] Sending manual test message...');
-        // TEMPORARILY COMMENTED OUT - Send to production server
-        // const productionRoleId = env.getOptional('PRODUCTION_CA_ROLE_ID');
-        // const productionServerId = env.getOptional('PRODUCTION_SERVER_ID');
-        // const productionChannelId = env.getOptional('PRODUCTION_CHANNEL_ID');
-        // const weeklyReportUrl = env.getOptional('WEEKLY_REPORT_SURVEY_URL');
+        console.log('[WeeklyReportScheduler] Sending manual test message to test server only...');
         
-        // if (!productionRoleId || !productionServerId || !productionChannelId || !weeklyReportUrl) {
-        //     console.error('[WeeklyReportScheduler] Missing required environment variables for test message');
-        //     return;
-        // }
-        
-        // const testMessage = `<@&${productionRoleId}> Weekly Report Reminder! (MANUAL TEST)
-        // Weekly Report Link: ${weeklyReportUrl}`;
-
-        // await this.sendToChannel(productionChannelId, productionServerId, testMessage);
-        // console.log('[WeeklyReportScheduler] Manual test message sent to production');
-
-        // Send to test server instead
+        // Get test server environment variables
         const testRoleId = env.getOptional('TEST_CA_ROLE_ID');
         const testServerId = env.getOptional('TEST_SERVER_ID');
         const testChannelId = env.getOptional('TEST_CHANNEL_ID');
         const weeklyReportUrl = env.getOptional('WEEKLY_REPORT_SURVEY_URL');
         
-        if (!testRoleId || !testServerId || !testChannelId || !weeklyReportUrl) {
-            console.error('[WeeklyReportScheduler] Missing required environment variables for test message (test server)');
-            return;
-        }
-        
-        const testMessage = `<@&${testRoleId}> Weekly Report Reminder! (MANUAL TEST) [TEST SERVER]
+        // Send to test server only
+        if (testRoleId && testServerId && testChannelId && weeklyReportUrl) {
+            const testMessage = `<@&${testRoleId}> Weekly Report Reminder! (MANUAL TEST) [TEST SERVER]
 Weekly Report Link: ${weeklyReportUrl}`;
-
-        await this.sendToChannel(testChannelId, testServerId, testMessage);
-        console.log('[WeeklyReportScheduler] Manual test message sent to test server');
+            await this.sendToChannel(testChannelId, testServerId, testMessage);
+            console.log('[WeeklyReportScheduler] Manual test message sent to test server');
+        } else {
+            console.log('[WeeklyReportScheduler] Missing test server environment variables - cannot send test message');
+        }
     }
 
     /**
