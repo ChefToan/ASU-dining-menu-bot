@@ -83,7 +83,7 @@ export class WeeklyReportScheduler {
         if (day !== 0) return false;
         
         // Check if it's 12:00 PM (noon) or 11:30 PM
-        const isNoon = hour === 12 && minute === 30;
+        const isNoon = hour === 12 && minute === 45;
         const isEvening = hour === 23 && minute === 30;
         
         const shouldSend = isNoon || isEvening;
