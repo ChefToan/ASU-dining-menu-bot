@@ -14,15 +14,13 @@ export class WeeklyReportScheduler {
      * Start the weekly report scheduler
      */
     start(): void {
-        console.log('[WeeklyReportScheduler] Starting weekly report scheduler...');
+        console.log('✅ Weekly report scheduler started - will send messages on Sundays at 12pm and 11:30pm Arizona time');
         
         // Check immediately and then every minute
         this.checkAndSendReports();
         this.schedulerInterval = setInterval(() => {
             this.checkAndSendReports();
         }, this.checkInterval);
-        
-        console.log('[WeeklyReportScheduler] Weekly report scheduler started - checking every minute');
     }
 
     /**
@@ -33,7 +31,6 @@ export class WeeklyReportScheduler {
             clearInterval(this.schedulerInterval);
             this.schedulerInterval = undefined;
         }
-        console.log('[WeeklyReportScheduler] Scheduler stopped');
     }
 
     /**
@@ -41,15 +38,9 @@ export class WeeklyReportScheduler {
      */
     private async checkAndSendReports(): Promise<void> {
         try {
-            // TEMP DEBUG LOGGING
-            const now = new Date();
-            console.log(`[WeeklyReportScheduler] DEBUG - Check called at: ${now.toISOString()}`);
-            
             if (this.shouldSendReport()) {
-                console.log('[WeeklyReportScheduler] Time matches! Sending reports...');
+                console.log('[WeeklyReportScheduler] Sending weekly reports...');
                 await this.sendWeeklyReports();
-            } else {
-                console.log('[WeeklyReportScheduler] DEBUG - Time does not match, not sending reports');
             }
         } catch (error) {
             console.error('[WeeklyReportScheduler] Error checking/sending reports:', error);
@@ -69,34 +60,21 @@ export class WeeklyReportScheduler {
         const hour = arizonaTime.getHours();
         const minute = arizonaTime.getMinutes();
         
-        // TEMP DEBUG LOGGING
-        console.log('[WeeklyReportScheduler] DEBUG - Time comparison:');
-        console.log(`[WeeklyReportScheduler] DEBUG - Server UTC time: ${now.toISOString()}`);
-        console.log(`[WeeklyReportScheduler] DEBUG - Arizona time string: ${now.toLocaleString("en-US", {timeZone: "America/Phoenix"})}`);
-        console.log(`[WeeklyReportScheduler] DEBUG - Arizona Date object: ${arizonaTime.toISOString()}`);
-        console.log(`[WeeklyReportScheduler] DEBUG - Day: ${day} (0=Sunday), Hour: ${hour}, Minute: ${minute}`);
-        console.log(`[WeeklyReportScheduler] DEBUG - Is Sunday: ${day === 0}`);
-        console.log(`[WeeklyReportScheduler] DEBUG - Is noon (12:00): ${hour === 12 && minute === 0}`);
-        console.log(`[WeeklyReportScheduler] DEBUG - Is evening (23:30): ${hour === 23 && minute === 30}`);
         
         // Only on Sundays
         if (day !== 0) return false;
         
         // Check if it's 12:00 PM (noon) or 11:30 PM
-        const isNoon = hour === 12 && minute === 45;
+        const isNoon = hour === 12 && minute === 0;
         const isEvening = hour === 23 && minute === 30;
         
-        const shouldSend = isNoon || isEvening;
-        console.log(`[WeeklyReportScheduler] DEBUG - Should send report: ${shouldSend}`);
-        
-        return shouldSend;
+        return isNoon || isEvening;
     }
 
     /**
      * Send weekly reports to the configured channels
      */
     private async sendWeeklyReports(): Promise<void> {
-        console.log('[WeeklyReportScheduler] Sending weekly reports...');
         
         const now = new Date();
         const arizonaTime = new Date(now.toLocaleString("en-US", {timeZone: "America/Phoenix"}));
@@ -119,35 +97,22 @@ export class WeeklyReportScheduler {
             const productionMessage = `<@&${productionRoleId}> Weekly Report Reminder! (${messageNumber})
 Weekly Report Link: ${weeklyReportUrl}`;
             await this.sendToChannel(productionChannelId, productionServerId, productionMessage);
-            console.log(`[WeeklyReportScheduler] Weekly report (${messageNumber}) sent to PRODUCTION SERVER`);
-        } else {
-            console.log('[WeeklyReportScheduler] Missing production server environment variables - skipping production message');
+            console.log(`✅ Weekly report (${messageNumber}) sent to production server`);
         }
 
         // Also send to test server
-        
-        // TEMP DEBUG LOGGING
-        console.log('[WeeklyReportScheduler] DEBUG - Environment variables:');
-        console.log(`[WeeklyReportScheduler] DEBUG - TEST_CA_ROLE_ID: ${testRoleId ? 'SET' : 'MISSING'}`);
-        console.log(`[WeeklyReportScheduler] DEBUG - TEST_SERVER_ID: ${testServerId ? 'SET' : 'MISSING'}`);
-        console.log(`[WeeklyReportScheduler] DEBUG - TEST_CHANNEL_ID: ${testChannelId ? 'SET' : 'MISSING'}`);
-        console.log(`[WeeklyReportScheduler] DEBUG - WEEKLY_REPORT_SURVEY_URL: ${weeklyReportUrl ? 'SET' : 'MISSING'}`);
-        
+        // COMMENTED OUT - Only send to production server
+        /*
         if (!testRoleId || !testServerId || !testChannelId || !weeklyReportUrl) {
-            console.error('[WeeklyReportScheduler] Missing required environment variables for weekly report (test server)');
             return;
         }
         
         const testMessage = `<@&${testRoleId}> Weekly Report Reminder! (${messageNumber}) [TEST SERVER]
 Weekly Report Link: ${weeklyReportUrl}`;
         
-        console.log(`[WeeklyReportScheduler] DEBUG - About to send message to test server`);
-        console.log(`[WeeklyReportScheduler] DEBUG - Channel: ${testChannelId}, Server: ${testServerId}`);
-        console.log(`[WeeklyReportScheduler] DEBUG - Message: ${testMessage}`);
-        
         await this.sendToChannel(testChannelId, testServerId, testMessage);
+        */
 
-        console.log(`[WeeklyReportScheduler] Weekly report (${messageNumber}) sent to TEST SERVER`);
     }
 
 
@@ -158,18 +123,15 @@ Weekly Report Link: ${weeklyReportUrl}`;
         try {
             const guild = await this.client.guilds.fetch(guildId);
             if (!guild) {
-                console.error(`[WeeklyReportScheduler] Guild not found: ${guildId}`);
                 return;
             }
 
             const channel = await guild.channels.fetch(channelId);
             if (!channel || !channel.isTextBased()) {
-                console.error(`[WeeklyReportScheduler] Text channel not found: ${channelId}`);
                 return;
             }
 
             await (channel as TextChannel).send(message);
-            console.log(`[WeeklyReportScheduler] Message sent to channel ${channelId} in guild ${guildId}`);
         } catch (error) {
             console.error(`[WeeklyReportScheduler] Error sending message to channel ${channelId}:`, error);
         }
@@ -179,7 +141,6 @@ Weekly Report Link: ${weeklyReportUrl}`;
      * Manually trigger a test message (sends to test server)
      */
     async sendTestMessage(): Promise<void> {
-        console.log('[WeeklyReportScheduler] Sending manual test message to test server only...');
         
         // Get test server environment variables
         const testRoleId = env.getOptional('TEST_CA_ROLE_ID');
@@ -192,9 +153,7 @@ Weekly Report Link: ${weeklyReportUrl}`;
             const testMessage = `<@&${testRoleId}> Weekly Report Reminder! (MANUAL TEST) [TEST SERVER]
 Weekly Report Link: ${weeklyReportUrl}`;
             await this.sendToChannel(testChannelId, testServerId, testMessage);
-            console.log('[WeeklyReportScheduler] Manual test message sent to test server');
         } else {
-            console.log('[WeeklyReportScheduler] Missing test server environment variables - cannot send test message');
         }
     }
 
@@ -202,7 +161,6 @@ Weekly Report Link: ${weeklyReportUrl}`;
      * Force send a test message right now (for debugging)
      */
     async forceTestMessage(): Promise<void> {
-        console.log('[WeeklyReportScheduler] FORCE SENDING test message right now...');
         await this.sendWeeklyReports();
     }
 
