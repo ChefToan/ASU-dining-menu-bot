@@ -30,7 +30,6 @@
     "ts-node": "^10.9.2",
     "typescript": "^5.8.3"
   },
-  "type": "module",
   "private": true,
   "repository": "git@github.com:ChefToan/asu-dining-menu-bot.git",
   "author": "Toan",
