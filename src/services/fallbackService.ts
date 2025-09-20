@@ -57,7 +57,7 @@ class FallbackService {
     async removeBalance(userId: string, amount: number, username?: string): Promise<boolean> {
         const currentBalance = await this.getBalance(userId);
         if (currentBalance < amount) return false;
-        
+
         const user = this.balances.get(userId)!;
         user.balance = currentBalance - amount;
         if (username) user.username = username;
@@ -86,7 +86,7 @@ class FallbackService {
         }
 
         const reward = Math.floor(Math.random() * (this.WORK_REWARD_MAX - this.WORK_REWARD_MIN + 1)) + this.WORK_REWARD_MIN;
-        
+
         if (!this.balances.has(userId)) {
             this.balances.set(userId, {
                 userId,
@@ -104,7 +104,7 @@ class FallbackService {
         return { success: true, reward };
     }
 
-    async getLeaderboard(limit: number = 10): Promise<Array<{ userId: string; username: string | null; balance: number; rank: number }>> {
+    async getLeaderboard(limit = 10): Promise<Array<{ userId: string; username: string | null; balance: number; rank: number }>> {
         return Array.from(this.balances.values())
             .sort((a, b) => b.balance - a.balance)
             .slice(0, limit)
@@ -202,7 +202,7 @@ class FallbackService {
 
         // Clear cache
         this.cache.clear();
-        
+
         console.log('Fallback service cleaned up');
     }
 

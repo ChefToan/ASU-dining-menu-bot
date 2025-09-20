@@ -28,7 +28,7 @@ export class BotError extends Error {
         message: string,
         type: ErrorType = ErrorType.UNKNOWN,
         context: ErrorContext = {},
-        isUserFacing: boolean = false
+        isUserFacing = false
     ) {
         super(message);
         this.name = 'BotError';
@@ -67,13 +67,13 @@ export class ErrorHandler {
         };
 
         const botError = this.transformError(error, enrichedContext);
-        
+
         // Log the error
         this.logError(botError);
-        
+
         // Send user-friendly message
         await this.sendUserError(interaction, botError);
-        
+
         // Track error frequency
         this.trackError(botError);
     }
@@ -94,7 +94,7 @@ export class ErrorHandler {
         const botError = this.transformError(error, enrichedContext);
         this.logError(botError);
         this.trackError(botError);
-        
+
         return botError;
     }
 

@@ -33,7 +33,7 @@ class Cache {
 
     get<T>(key: string): T | null {
         const entry = this.store.get(key);
-        
+
         if (!entry) {
             return null;
         }
@@ -76,7 +76,7 @@ class Cache {
         }
 
         keysToDelete.forEach(key => this.store.delete(key));
-        
+
         if (keysToDelete.length > 0) {
             console.log(`Cache cleanup: removed ${keysToDelete.length} expired entries`);
         }

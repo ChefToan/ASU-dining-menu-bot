@@ -272,7 +272,7 @@ export class DiningEventService {
     async cleanupExpiredEvents(eventKey?: string): Promise<boolean> {
         try {
             const now = new Date();
-            
+
             // First, delete any cancelled or completed events with the same event_key (if specified)
             if (eventKey) {
                 await db.getClient()
@@ -344,7 +344,7 @@ export class DiningEventService {
 
         const [, month, day, year] = dateMatch;
         const parsedDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
-        
+
         // Validate that the date is valid
         if (isNaN(parsedDate.getTime())) {
             throw new Error('Invalid date. Please provide a valid date.');
@@ -357,34 +357,34 @@ export class DiningEventService {
     parseTime(timeStr: string, baseDate: Date = new Date()): Date | null {
         try {
             const time = timeStr.toLowerCase().trim();
-            
+
             // Handle 12-hour format (e.g., "2:30pm", "11:00 am")
             const twelveHourMatch = time.match(/^(\d{1,2}):?(\d{0,2})\s*(am|pm)$/);
             if (twelveHourMatch) {
-                let [, hourStr, minuteStr, period] = twelveHourMatch;
+                const [, hourStr, minuteStr, period] = twelveHourMatch;
                 let hour = parseInt(hourStr);
                 const minute = parseInt(minuteStr || '0');
-                
+
                 if (period === 'pm' && hour !== 12) hour += 12;
                 if (period === 'am' && hour === 12) hour = 0;
-                
+
                 // Create date specifically in Phoenix timezone
                 return this.createPhoenixDate(baseDate, hour, minute);
             }
-            
+
             // Handle 24-hour format (e.g., "14:30", "09:00")
             const twentyFourHourMatch = time.match(/^(\d{1,2}):(\d{2})$/);
             if (twentyFourHourMatch) {
                 const [, hourStr, minuteStr] = twentyFourHourMatch;
                 const hour = parseInt(hourStr);
                 const minute = parseInt(minuteStr);
-                
+
                 if (hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59) {
                     // Create date specifically in Phoenix timezone
                     return this.createPhoenixDate(baseDate, hour, minute);
                 }
             }
-            
+
             return null;
         } catch (error) {
             return null;
@@ -396,10 +396,10 @@ export class DiningEventService {
         // Get the date components in Phoenix timezone
         const phoenixDateStr = baseDate.toLocaleDateString("en-CA", {timeZone: "America/Phoenix"}); // YYYY-MM-DD format
         const phoenixTimeStr = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}:00`;
-        
+
         // Create ISO string for Phoenix timezone
         const isoString = `${phoenixDateStr}T${phoenixTimeStr}.000-07:00`; // MST is UTC-7
-        
+
         return new Date(isoString);
     }
 
@@ -408,10 +408,10 @@ export class DiningEventService {
         // Get the date/time components in Phoenix timezone
         const phoenixDateStr = date.toLocaleDateString("en-CA", {timeZone: "America/Phoenix"});
         const phoenixTimeStr = date.toLocaleTimeString("en-GB", {timeZone: "America/Phoenix", hour12: false});
-        
+
         // Create ISO string for Phoenix timezone (MST is UTC-7)
         const isoString = `${phoenixDateStr}T${phoenixTimeStr}.000-07:00`;
-        
+
         return new Date(isoString);
     }
 
@@ -459,7 +459,7 @@ export class DiningEventService {
 
             case 'dinner':
                 // Mon-Thu 4:30PM - 9:00PM
-                // Fri-Sat 4:30PM - 7:00PM  
+                // Fri-Sat 4:30PM - 7:00PM
                 // Sun 4:30PM - 8:00PM
                 if (dayOfWeek >= 1 && dayOfWeek <= 4) { // Monday-Thursday
                     return timeInMinutes >= 16.5 * 60 && timeInMinutes <= 21 * 60;

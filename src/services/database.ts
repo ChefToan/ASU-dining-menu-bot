@@ -271,7 +271,7 @@ class DatabaseService {
         .from('users')
         .select('count')
         .limit(1);
-      
+
       return !error;
     } catch (error) {
       errorHandler.handleServiceError(error, 'database.testConnection');
@@ -284,7 +284,7 @@ class DatabaseService {
     try {
       const { data, error } = await this.supabase
         .rpc('clean_expired_cache');
-      
+
       if (error) throw error;
       return data || 0;
     } catch (error) {

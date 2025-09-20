@@ -86,7 +86,7 @@ export class UserService {
         if (useDatabaseFallback) {
             return fallbackService.getBalance(userId);
         }
-        
+
         try {
             const user = await this.getOrCreateUser(userId);
             return user.balance;
@@ -101,7 +101,7 @@ export class UserService {
         if (useDatabaseFallback) {
             return fallbackService.addBalance(userId, amount, username);
         }
-        
+
         try {
             const user = await this.getOrCreateUser(userId, username);
             const newBalance = user.balance + amount;
@@ -124,10 +124,10 @@ export class UserService {
         if (useDatabaseFallback) {
             return fallbackService.removeBalance(userId, amount, username);
         }
-        
+
         try {
             const user = await this.getOrCreateUser(userId, username);
-            
+
             if (user.balance < amount) {
                 return false; // Insufficient funds
             }
@@ -155,7 +155,7 @@ export class UserService {
             // Only trigger for users who went broke from gambling specifically
             // Limit to maximum 1 bailout per user to prevent exploitation
             console.log(`CanWork check - User: ${userId}, Balance: ${user.balance}, BailoutCount: ${user.bankruptcyBailoutCount}, FromGambling: ${user.bankruptcyFromGambling}`);
-            
+
             if (user.balance === 0 && user.bankruptcyBailoutCount === 0 && user.bankruptcyFromGambling) {
                 console.log(`Bankruptcy bailout eligible for user ${userId}`);
                 return { canWork: true, bankruptcyBailout: true };
@@ -184,7 +184,7 @@ export class UserService {
         if (useDatabaseFallback) {
             return fallbackService.doWork(userId, username);
         }
-        
+
         try {
             const workCheck = await this.canWork(userId);
 
@@ -201,9 +201,9 @@ export class UserService {
 
             // Prepare update object
             const updateData: any = {
-                balance: balanceAfter, 
+                balance: balanceAfter,
                 last_work: new Date().toISOString(),
-                username 
+                username
             };
 
             // If this is a bankruptcy bailout, increment count and clear gambling flag
@@ -244,11 +244,11 @@ export class UserService {
         }
     }
 
-    async getLeaderboard(limit: number = 10): Promise<Array<{ userId: string; username: string | null; balance: number; rank: number }>> {
+    async getLeaderboard(limit = 10): Promise<Array<{ userId: string; username: string | null; balance: number; rank: number }>> {
         if (useDatabaseFallback) {
             return fallbackService.getLeaderboard(limit);
         }
-        
+
         try {
             const { data, error } = await db.getClient()
                 .from('user_leaderboard')
@@ -256,7 +256,7 @@ export class UserService {
                 .limit(limit);
 
             if (error) throw error;
-            
+
             // Map the database column names to our interface
             return (data || []).map(row => ({
                 userId: row.user_id,
@@ -276,12 +276,12 @@ export class UserService {
         try {
             const user = await this.getOrCreateUser(userId);
             console.log(`setBankruptcyBailout - User: ${userId}, Current bailout count: ${user.bankruptcyBailoutCount}`);
-            
+
             // Only set gambling flag if user hasn't used their bailout yet
             if (user.bankruptcyBailoutCount === 0) {
                 const { error } = await db.getClient()
                     .from('users')
-                    .update({ 
+                    .update({
                         bankruptcy_from_gambling: true
                     })
                     .eq('user_id', userId);

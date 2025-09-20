@@ -9,9 +9,9 @@ import { MenuPeriod } from '../commands/type/menu';
 import { MENU_CONFIG } from './config';
 
 // Helper function to get standard dining hours for meal periods
-export function getStandardMealHours(periodName: string): string {
+export function getStandardMealHours(periodName: string, date?: Date): string {
     const normalizedName = periodName.toLowerCase();
-    
+
     if (normalizedName.includes('breakfast')) {
         return '(7:00 AM - 11:00 AM)';
     } else if (normalizedName.includes('brunch')) {
@@ -21,6 +21,18 @@ export function getStandardMealHours(periodName: string): string {
     } else if (normalizedName.includes('light lunch') || normalizedName.includes('light-lunch')) {
         return '(2:00 PM - 4:30 PM)';
     } else if (normalizedName.includes('dinner')) {
+        // Show day-specific dinner hours if date is provided
+        if (date) {
+            const dayOfWeek = date.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+            if (dayOfWeek >= 1 && dayOfWeek <= 4) { // Monday-Thursday
+                return '(4:30 PM - 9:00 PM)';
+            } else if (dayOfWeek === 5 || dayOfWeek === 6) { // Friday-Saturday
+                return '(4:30 PM - 7:00 PM)';
+            } else { // Sunday
+                return '(4:30 PM - 8:00 PM)';
+            }
+        }
+        // Fallback to general hours if no date provided
         return '(4:30 PM - 9:00 PM)';
     } else if (normalizedName.includes('late night')) {
         return '(Currently Closed)';
@@ -71,8 +83,8 @@ export function createPeriodButtons(periods: Period[]): ActionRowBuilder<ButtonB
 
 // Helper function to create station selection buttons
 export function createStationButtons(
-    stations: [string, string][], 
-    periodId?: string, 
+    stations: [string, string][],
+    periodId?: string,
     activeStationId?: string
 ): ActionRowBuilder<ButtonBuilder>[] {
     const rows: ActionRowBuilder<ButtonBuilder>[] = [];
@@ -107,10 +119,10 @@ export function createStationButtons(
 export function createRefreshButton(diningHall?: string, date?: string): ActionRowBuilder<ButtonBuilder> {
     // If dining hall and date are provided, encode them in the custom ID
     // Format: refresh_menu_{diningHall}_{date}
-    const customId = diningHall && date 
+    const customId = diningHall && date
         ? `refresh_menu_${diningHall}_${date}`
         : 'persistent_refresh_menu'; // fallback for compatibility
-        
+
     return new ActionRowBuilder<ButtonBuilder>()
         .addComponents(
             new ButtonBuilder()
@@ -151,7 +163,7 @@ function getArizonaDateComponents(): { month: number, day: number, year: number 
     const now = new Date();
     const arizonaDateStr = now.toLocaleDateString("en-CA", {timeZone: "America/Phoenix"}); // YYYY-MM-DD format
     const [year, month, day] = arizonaDateStr.split('-').map(num => parseInt(num, 10));
-    
+
     return { month, day, year };
 }
 
@@ -197,11 +209,12 @@ export function createMainEmbed(displayName: string, formattedDisplayDate: strin
 
 // Helper function to create station selection embed
 export function createStationSelectionEmbed(
-    displayName: string, 
-    formattedDisplayDate: string, 
-    period: Period
+    displayName: string,
+    formattedDisplayDate: string,
+    period: Period,
+    date?: Date
 ): EmbedBuilder {
-    const standardHours = getStandardMealHours(period.name);
+    const standardHours = getStandardMealHours(period.name, date);
     let description = `Here are the menu options for **${period.name}** ${standardHours}`;
     description += `\n\nPlease select a station to view available items.`;
 
@@ -217,9 +230,10 @@ export function createStationMenuEmbed(
     formattedDisplayDate: string,
     period: Period,
     stationName: string,
-    stationContent: string
+    stationContent: string,
+    date?: Date
 ): EmbedBuilder {
-    const standardHours = getStandardMealHours(period.name);
+    const standardHours = getStandardMealHours(period.name, date);
     let description = `Here are the menu options for **${period.name}** ${standardHours}`;
     description += `\n\n**${stationName}**\n${stationContent}`;
 

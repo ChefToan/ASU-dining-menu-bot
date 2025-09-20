@@ -99,7 +99,7 @@ export class RouletteService {
         }
     }
 
-    async getRecentGames(userId: string, limit: number = 10): Promise<RouletteGameResult[]> {
+    async getRecentGames(userId: string, limit = 10): Promise<RouletteGameResult[]> {
         try {
             const { data, error } = await db.getClient()
                 .from('roulette_games')
@@ -167,7 +167,7 @@ export class RouletteService {
         }
     }
 
-    async getTopWinners(limit: number = 10): Promise<Array<{
+    async getTopWinners(limit = 10): Promise<Array<{
         userId: string;
         username: string | null;
         totalWinnings: number;
@@ -183,7 +183,7 @@ export class RouletteService {
             return data;
         } catch (error) {
             console.error('Error getting top winners:', error);
-            
+
             // Fallback: calculate manually
             try {
                 const { data: allGames, error: gamesError } = await db.getClient()

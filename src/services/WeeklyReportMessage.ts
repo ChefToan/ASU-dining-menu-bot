@@ -5,7 +5,7 @@ export class WeeklyReportScheduler {
     private client: Client;
     private schedulerInterval?: NodeJS.Timeout;
     private checkInterval = 60 * 1000; // Check every minute
-    
+
     constructor(client: Client) {
         this.client = client;
     }
@@ -15,7 +15,7 @@ export class WeeklyReportScheduler {
      */
     start(): void {
         console.log('✅ Weekly report scheduler started - will send messages on Sundays at 12pm and 11:30pm Arizona time');
-        
+
         // Check immediately and then every minute
         this.checkAndSendReports();
         this.schedulerInterval = setInterval(() => {
@@ -53,21 +53,21 @@ export class WeeklyReportScheduler {
      */
     private shouldSendReport(): boolean {
         const now = new Date();
-        
+
         // Get current Arizona date/time
         const arizonaTime = new Date(now.toLocaleString("en-US", {timeZone: "America/Phoenix"}));
         const day = arizonaTime.getDay(); // 0 = Sunday
         const hour = arizonaTime.getHours();
         const minute = arizonaTime.getMinutes();
-        
-        
+
+
         // Only on Sundays
         if (day !== 0) return false;
-        
+
         // Check if it's 12:00 PM (noon) or 11:30 PM
         const isNoon = hour === 12 && minute === 0;
         const isEvening = hour === 23 && minute === 30;
-        
+
         return isNoon || isEvening;
     }
 
@@ -75,14 +75,14 @@ export class WeeklyReportScheduler {
      * Send weekly reports to the configured channels
      */
     private async sendWeeklyReports(): Promise<void> {
-        
+
         const now = new Date();
         const arizonaTime = new Date(now.toLocaleString("en-US", {timeZone: "America/Phoenix"}));
         const hour = arizonaTime.getHours();
-        
+
         // Determine if this is the first (12 PM) or second (11:30 PM) message
         const messageNumber = hour === 12 ? '1/2' : '2/2';
-        
+
         // Get environment variables
         const productionRoleId = env.getOptional('PRODUCTION_CA_ROLE_ID');
         const productionServerId = env.getOptional('PRODUCTION_SERVER_ID');
@@ -91,7 +91,7 @@ export class WeeklyReportScheduler {
         const testServerId = env.getOptional('TEST_SERVER_ID');
         const testChannelId = env.getOptional('TEST_CHANNEL_ID');
         const weeklyReportUrl = env.getOptional('WEEKLY_REPORT_SURVEY_URL');
-        
+
         // Send to production server
         if (productionRoleId && productionServerId && productionChannelId && weeklyReportUrl) {
             const productionMessage = `<@&${productionRoleId}> Weekly Report Reminder! (${messageNumber})
@@ -106,10 +106,10 @@ Weekly Report Link: ${weeklyReportUrl}`;
         if (!testRoleId || !testServerId || !testChannelId || !weeklyReportUrl) {
             return;
         }
-        
+
         const testMessage = `<@&${testRoleId}> Weekly Report Reminder! (${messageNumber}) [TEST SERVER]
 Weekly Report Link: ${weeklyReportUrl}`;
-        
+
         await this.sendToChannel(testChannelId, testServerId, testMessage);
         */
 
@@ -141,13 +141,13 @@ Weekly Report Link: ${weeklyReportUrl}`;
      * Manually trigger a test message (sends to test server)
      */
     async sendTestMessage(): Promise<void> {
-        
+
         // Get test server environment variables
         const testRoleId = env.getOptional('TEST_CA_ROLE_ID');
         const testServerId = env.getOptional('TEST_SERVER_ID');
         const testChannelId = env.getOptional('TEST_CHANNEL_ID');
         const weeklyReportUrl = env.getOptional('WEEKLY_REPORT_SURVEY_URL');
-        
+
         // Send to test server only
         if (testRoleId && testServerId && testChannelId && weeklyReportUrl) {
             const testMessage = `<@&${testRoleId}> Weekly Report Reminder! (MANUAL TEST) [TEST SERVER]
@@ -170,7 +170,7 @@ Weekly Report Link: ${weeklyReportUrl}`;
     getNextReportTimes(): { noon: Date, evening: Date } {
         const now = new Date();
         const nextSunday = new Date(now);
-        
+
         // Find next Sunday
         const daysUntilSunday = (7 - now.getDay()) % 7;
         if (daysUntilSunday === 0) {
@@ -178,7 +178,7 @@ Weekly Report Link: ${weeklyReportUrl}`;
             const arizonaTime = new Date(now.toLocaleString("en-US", {timeZone: "America/Phoenix"}));
             const hour = arizonaTime.getHours();
             const minute = arizonaTime.getMinutes();
-            
+
             if (hour > 23 || (hour === 23 && minute >= 30)) {
                 // Past 11:30 PM, move to next Sunday
                 nextSunday.setDate(now.getDate() + 7);
@@ -190,10 +190,10 @@ Weekly Report Link: ${weeklyReportUrl}`;
         // Create times in Arizona timezone
         const arizonaDateStr = nextSunday.toLocaleDateString("en-CA", {timeZone: "America/Phoenix"});
         const [year, month, day] = arizonaDateStr.split('-').map(num => parseInt(num, 10));
-        
+
         const noonTime = new Date(`${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}T12:00:00.000-07:00`);
         const eveningTime = new Date(`${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}T23:30:00.000-07:00`);
-        
+
         return {
             noon: noonTime,
             evening: eveningTime

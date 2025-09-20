@@ -19,7 +19,7 @@ import { setupInteractionHandlers } from '../commands/food/menuCommand';
  * Simplified persistent button handler
  */
 export class PersistentButtonHandler {
-    
+
     /**
      * Handle refresh button clicks - creates a completely new menu embed
      */
@@ -45,7 +45,7 @@ export class PersistentButtonHandler {
             const customId = interaction.customId;
             let diningHallOption: string;
             let formattedDate: string;
-            
+
             if (customId.startsWith('refresh_menu_')) {
                 const parts = customId.split('_');
                 if (parts.length >= 4) {
@@ -100,7 +100,7 @@ export class PersistentButtonHandler {
                     diningHall: displayName,
                     date: formattedDate
                 });
-                
+
                 if (canEditReply) {
                     await interaction.editReply({
                         content: errorMsg,
@@ -137,7 +137,7 @@ export class PersistentButtonHandler {
                         embeds: [mainEmbed],
                         components: periodButtons
                     });
-                    
+
                     // Set up interaction handling for the new message
                     // We need to create a fake interaction object for setupInteractionHandlers
                     const fakeInteraction = {
@@ -146,7 +146,7 @@ export class PersistentButtonHandler {
                         replied: false,
                         deferred: false
                     } as ButtonInteraction;
-                    
+
                     await setupInteractionHandlers(
                         fakeInteraction,
                         diningHall,
@@ -158,7 +158,7 @@ export class PersistentButtonHandler {
                         mainEmbed,
                         periodButtons
                     );
-                    
+
                     console.log('[PersistentRefresh] Successfully refreshed menu with new message');
                     return;
                 }

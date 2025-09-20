@@ -240,7 +240,11 @@ async function handlePeriodSelection(
         return;
     }
 
-    const stationSelectionEmbed = createStationSelectionEmbed(displayName, formattedDisplayDate, selectedPeriod);
+    // Parse the date for time validation
+    const [month, day, year] = formattedDate.split('/').map(num => parseInt(num, 10));
+    const dateObj = new Date(year, month - 1, day);
+
+    const stationSelectionEmbed = createStationSelectionEmbed(displayName, formattedDisplayDate, selectedPeriod, dateObj);
     
     // Create station buttons
     const stationButtons = createStationButtons(nonEmptyStations, selectedPeriodId);
@@ -330,12 +334,17 @@ async function handleStationButtonSelection(
     // Create station content string
     const stationContent = stationItems.map(item => `• ${item.MarketingName}`).join('\n');
 
+    // Parse the date for time validation
+    const [month, day, year] = formattedDate.split('/').map(num => parseInt(num, 10));
+    const dateObj = new Date(year, month - 1, day);
+
     const stationMenuEmbed = createStationMenuEmbed(
         displayName,
         formattedDisplayDate,
         selectedPeriod,
-        stationName, 
-        stationContent
+        stationName,
+        stationContent,
+        dateObj
     );
 
     // Create station buttons with current station selected  
