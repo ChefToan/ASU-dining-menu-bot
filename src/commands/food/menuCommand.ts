@@ -139,18 +139,31 @@ export async function setupInteractionHandlers(
         // Handle button interactions
         if (componentInteraction.isButton()) {
             const buttonInteraction = componentInteraction;
-            
-            if (buttonInteraction.customId === 'persistent_refresh_menu' || 
+
+            console.log('[DEBUG-LocalCollector] Caught button:', buttonInteraction.customId);
+
+            if (buttonInteraction.customId === 'persistent_refresh_menu' ||
                 buttonInteraction.customId.startsWith('refresh_menu_')) {
                 // Skip - handled by global persistent button handler
+                console.log('[DEBUG-LocalCollector] Skipping refresh button - handled by global handler');
                 return;
             } else if (buttonInteraction.customId.startsWith('period_')) {
+                // Check if this is a persistent period button (has context encoded)
+                const parts = buttonInteraction.customId.split('_');
+                if (parts.length >= 4) {
+                    // This is a persistent button with format: period_{diningHall}_{date}_{periodId}
+                    // Skip - handled by global persistent button handler
+                    console.log('[DEBUG-LocalCollector] Skipping persistent period button - handled by global handler');
+                    return;
+                }
+
+                console.log('[DEBUG-LocalCollector] Handling local period button');
                 await handlePeriodSelection(
-                    buttonInteraction, 
-                    diningHall, 
-                    formattedDate, 
-                    displayName, 
-                    formattedDisplayDate, 
+                    buttonInteraction,
+                    diningHall,
+                    formattedDate,
+                    displayName,
+                    formattedDisplayDate,
                     availablePeriods,
                     currentPeriodId,
                     currentPeriodMenuData

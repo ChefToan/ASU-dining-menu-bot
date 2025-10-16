@@ -121,16 +121,33 @@ export class PersistentButtonHandler {
             // Recreate the menu with period buttons on the SAME message
             // No collectors needed - buttons encode context in their IDs
             const availablePeriods = parsePeriods(menuData.Menu.MenuPeriods);
+
+            console.log('[DEBUG-REFRESH] ========== REFRESH DEBUG ==========');
+            console.log('[DEBUG-REFRESH] Dining Hall:', diningHallOption);
+            console.log('[DEBUG-REFRESH] Date:', formattedDate);
+            console.log('[DEBUG-REFRESH] Available Periods Count:', availablePeriods.length);
+            console.log('[DEBUG-REFRESH] Available Periods:', availablePeriods.map(p => `${p.name} (${p.id})`).join(', '));
+
             const mainEmbed = createMainEmbed(displayName, formattedDisplayDate);
             // Pass dining hall and date so buttons can be handled globally
             const periodButtons = createPeriodButtons(availablePeriods, diningHallOption, formattedDate);
 
+            console.log('[DEBUG-REFRESH] Period Button Rows Created:', periodButtons.length);
+            periodButtons.forEach((row, index) => {
+                console.log(`[DEBUG-REFRESH] Row ${index} has ${row.components.length} buttons`);
+            });
+            console.log('[DEBUG-REFRESH] Total buttons across all rows:', periodButtons.reduce((sum, row) => sum + row.components.length, 0));
+
             // Update the existing message with fresh period buttons
             if (canEditReply) {
+                console.log('[DEBUG-REFRESH] About to call editReply with', periodButtons.length, 'ActionRows');
+
                 await interaction.editReply({
                     embeds: [mainEmbed],
                     components: periodButtons
                 });
+
+                console.log('[DEBUG-REFRESH] editReply completed successfully');
                 console.log('[PersistentRefresh] Successfully refreshed menu on same message');
             } else {
                 // If token expired, create new message
@@ -143,6 +160,7 @@ export class PersistentButtonHandler {
                     console.log('[PersistentRefresh] Created new message due to expired token');
                 }
             }
+            console.log('[DEBUG-REFRESH] ========== END REFRESH DEBUG ==========');
 
         } catch (error) {
             console.error('Error in persistent refresh:', error);
