@@ -380,52 +380,16 @@ async function handleCollectorEnd(
 ) {
     try {
         if (interaction.replied || interaction.deferred) {
+            // Add refresh button when initial collector ends
+            // The global handler in index.ts will process refresh button clicks
             const refreshRow = createRefreshButton(diningHallOption, formattedDate);
             await interaction.editReply({ components: [refreshRow] })
                 .catch(error => console.error('Error adding refresh button:', error));
-            
-            // Set up a new collector specifically for the refresh button
-            const message = await interaction.fetchReply();
-            const refreshCollector = message.createMessageComponentCollector({
-                componentType: ComponentType.Button,
-                time: MENU_CONFIG.REFRESH_TIMEOUT,
-                filter: (buttonInteraction) => buttonInteraction.customId === 'persistent_refresh_menu' || 
-                                             buttonInteraction.customId.startsWith('refresh_menu_')
-            });
 
-            refreshCollector.on('collect', async (buttonInteraction: ButtonInteraction) => {
-                try {
-                    await buttonInteraction.deferUpdate();
-                } catch (error: any) {
-                    // Handle expired interaction token (15 minute limit)
-                    if (error.code === 10062) {
-                        console.log('[RefreshCollector] Interaction token expired, handling gracefully');
-                        // Continue processing even if defer fails
-                    } else {
-                        console.error('[RefreshCollector] Error deferring interaction:', error);
-                        return;
-                    }
-                }
-                // Skip - handled by global persistent button handler
-                return;
-            });
-
-            refreshCollector.on('end', () => {
-                // Remove all components when refresh timeout expires
-                // Only attempt if within Discord's 15-minute interaction token limit
-                const timeSinceInteraction = Date.now() - (interaction.createdTimestamp || 0);
-                const fifteenMinutes = 15 * 60 * 1000;
-                
-                if (timeSinceInteraction < fifteenMinutes) {
-                    interaction.editReply({ components: [] })
-                        .catch(error => {
-                            // Silently handle token expiry errors as they're expected
-                            if (error.code !== 50027) {
-                                console.error('Error removing components:', error);
-                            }
-                        });
-                }
-            });
+            // Note: No local collector needed - the global persistent button handler
+            // in index.ts handles all refresh button interactions
+            // This prevents duplicate collectors from racing to process the same interaction,
+            // which causes button glitching on mobile devices
         }
     } catch (error) {
         console.error('Error in collector end handler:', error);

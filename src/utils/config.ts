@@ -76,7 +76,7 @@ export const MENU_CONFIG = {
     ],
 
     // Collector timeouts
-    INTERACTION_TIMEOUT: 10 * 60 * 1000, // 10 minutes
+    INTERACTION_TIMEOUT: 1 * 60 * 1000, // 1 minute (TEMPORARY FOR TESTING - revert to 10 minutes after)
     REFRESH_TIMEOUT: 14 * 60 * 1000, // 14 minutes (safe buffer before 15min token expiry)
 
     // Button limits
