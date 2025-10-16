@@ -1,16 +1,18 @@
-import { ButtonInteraction } from 'discord.js';
-import { fetchMenu } from '../utils/api';
+import { ButtonInteraction, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
+import { fetchMenu, organizeMenuByStation, getStationNames } from '../utils/api';
 import { DINING_HALLS } from '../utils/config';
 import {
     parsePeriods,
     createPeriodButtons,
+    createStationButtons,
+    createRefreshButton,
     getDiningHallDisplayName,
     formatDateForDisplay,
     formatMessage,
-    createMainEmbed
+    createMainEmbed,
+    createStationSelectionEmbed
 } from '../utils/menuHelpers';
 import { MENU_CONFIG } from '../utils/config';
-import { setupInteractionHandlers } from '../commands/food/menuCommand';
 
 /**
  * Simplified persistent button handler
@@ -116,61 +118,142 @@ export class PersistentButtonHandler {
                 return;
             }
 
-            // Recreate full interactive menu by creating a NEW message
-            // This avoids mobile glitching from collector conflicts on the same message
+            // Recreate the menu with period buttons on the SAME message
+            // No collectors needed - buttons encode context in their IDs
             const availablePeriods = parsePeriods(menuData.Menu.MenuPeriods);
             const mainEmbed = createMainEmbed(displayName, formattedDisplayDate);
-            const periodButtons = createPeriodButtons(availablePeriods);
+            // Pass dining hall and date so buttons can be handled globally
+            const periodButtons = createPeriodButtons(availablePeriods, diningHallOption, formattedDate);
 
-            // Always create a new message for refresh to avoid collector conflicts
-            const channel = interaction.channel;
-            if (!channel || !('send' in channel)) {
-                console.error('[PersistentRefresh] Cannot access channel');
-                return;
+            // Update the existing message with fresh period buttons
+            if (canEditReply) {
+                await interaction.editReply({
+                    embeds: [mainEmbed],
+                    components: periodButtons
+                });
+                console.log('[PersistentRefresh] Successfully refreshed menu on same message');
+            } else {
+                // If token expired, create new message
+                const channel = interaction.channel;
+                if (channel && 'send' in channel) {
+                    await channel.send({
+                        embeds: [mainEmbed],
+                        components: periodButtons
+                    });
+                    console.log('[PersistentRefresh] Created new message due to expired token');
+                }
             }
-
-            // Send the new menu message
-            const newMessage = await channel.send({
-                embeds: [mainEmbed],
-                components: periodButtons
-            });
-
-            // Delete the old message to keep things clean
-            try {
-                const oldMessage = await interaction.fetchReply();
-                await oldMessage.delete();
-            } catch (error) {
-                console.log('[PersistentRefresh] Could not delete old message (may be expired)');
-            }
-
-            // Create a fake interaction that points to the new message
-            const fakeInteraction = {
-                ...interaction,
-                fetchReply: () => Promise.resolve(newMessage),
-                editReply: (options: any) => newMessage.edit(options),
-                replied: true,
-                deferred: true,
-                createdTimestamp: Date.now()
-            } as ButtonInteraction;
-
-            // Set up interaction handlers on the NEW message
-            await setupInteractionHandlers(
-                fakeInteraction,
-                diningHall,
-                diningHallOption,
-                formattedDate,
-                displayName,
-                formattedDisplayDate,
-                availablePeriods,
-                mainEmbed,
-                periodButtons
-            );
-
-            console.log('[PersistentRefresh] Successfully created new menu message with full interactivity');
 
         } catch (error) {
             console.error('Error in persistent refresh:', error);
             // Don't try to send error messages for expired tokens since they'll fail anyway
+        }
+    }
+
+    /**
+     * Handle persistent period button clicks (after menu refresh)
+     * Format: period_{diningHall}_{date}_{periodId}
+     */
+    static async handlePeriodButton(interaction: ButtonInteraction): Promise<void> {
+        try {
+            await interaction.deferUpdate();
+
+            // Parse button ID: period_{diningHall}_{date}_{periodId}
+            const parts = interaction.customId.split('_');
+            if (parts.length < 4) {
+                console.error('[PersistentPeriod] Invalid button ID format');
+                return;
+            }
+
+            const diningHallOption = parts[1];
+            const formattedDate = parts[2];
+            const periodId = parts[3];
+
+            const diningHall = DINING_HALLS[diningHallOption as keyof typeof DINING_HALLS];
+            if (!diningHall) {
+                await interaction.followUp({
+                    content: 'Invalid dining hall configuration.',
+                    ephemeral: true
+                });
+                return;
+            }
+
+            const displayName = getDiningHallDisplayName(diningHallOption, diningHall.name);
+            const formattedDisplayDate = formatDateForDisplay(new Date(formattedDate));
+
+            // Fetch menu for selected period
+            const menuData = await fetchMenu({
+                mode: 'Daily',
+                locationId: diningHall.id,
+                date: formattedDate,
+                periodId: periodId
+            });
+
+            if (!menuData.Menu?.MenuStations || !menuData.Menu?.MenuProducts) {
+                await interaction.followUp({
+                    content: MENU_CONFIG.MESSAGES.NO_MENU_AVAILABLE,
+                    ephemeral: true
+                });
+                return;
+            }
+
+            // Get available periods and find selected one
+            const availablePeriods = parsePeriods(menuData.Menu.MenuPeriods || []);
+            const selectedPeriod = availablePeriods.find(p => p.id === periodId);
+
+            if (!selectedPeriod) {
+                await interaction.followUp({
+                    content: MENU_CONFIG.MESSAGES.PERIOD_UNAVAILABLE,
+                    ephemeral: true
+                });
+                return;
+            }
+
+            // Organize stations
+            const stationMap = organizeMenuByStation(menuData);
+            const stationNames = getStationNames(menuData);
+            const nonEmptyStations = Array.from(stationNames.entries())
+                .filter(([stationId]) => (stationMap.get(stationId) || []).length > 0);
+
+            if (nonEmptyStations.length === 0) {
+                await interaction.followUp({
+                    content: formatMessage(MENU_CONFIG.MESSAGES.NO_STATION_ITEMS, {
+                        diningHall: displayName,
+                        period: selectedPeriod.name,
+                        date: formattedDisplayDate
+                    }),
+                    ephemeral: true
+                });
+                return;
+            }
+
+            // Create UI
+            const [month, day, year] = formattedDate.split('/').map(num => parseInt(num, 10));
+            const dateObj = new Date(year, month - 1, day);
+            const stationSelectionEmbed = createStationSelectionEmbed(displayName, formattedDisplayDate, selectedPeriod, dateObj);
+            // Pass full context so station buttons are persistent
+            const stationButtons = createStationButtons(nonEmptyStations, periodId, undefined, diningHallOption, formattedDate);
+
+            // Add back and refresh buttons
+            const backButton = new ButtonBuilder()
+                .setCustomId(`back_to_periods_${diningHallOption}_${formattedDate}`)
+                .setLabel('Back to Periods')
+                .setStyle(ButtonStyle.Danger);
+
+            const refreshRow = createRefreshButton(diningHallOption, formattedDate);
+            const navigationRow = new ActionRowBuilder<ButtonBuilder>().addComponents(backButton, refreshRow.components[0]);
+
+            const allComponents = [...stationButtons, navigationRow];
+
+            await interaction.editReply({
+                embeds: [stationSelectionEmbed],
+                components: allComponents
+            });
+
+            console.log('[PersistentPeriod] Successfully showed station selection');
+
+        } catch (error) {
+            console.error('Error in persistent period handler:', error);
         }
     }
 

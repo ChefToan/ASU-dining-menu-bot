@@ -128,17 +128,42 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
 
     // Handle persistent button interactions
-    if (interaction.isButton() && (
-        interaction.customId === 'persistent_refresh_menu' ||
-        interaction.customId.startsWith('refresh_menu_')
-    )) {
-        try {
-            await PersistentButtonHandler.handleRefreshButton(interaction);
-        } catch (error) {
-            console.error('Error handling persistent button:', error);
-            await interaction.reply({ content: 'Button working!', ephemeral: true });
+    if (interaction.isButton()) {
+        // Refresh menu button
+        if (interaction.customId === 'persistent_refresh_menu' ||
+            interaction.customId.startsWith('refresh_menu_')) {
+            try {
+                await PersistentButtonHandler.handleRefreshButton(interaction);
+            } catch (error) {
+                console.error('Error handling refresh button:', error);
+                await interaction.reply({ content: 'Error refreshing menu.', ephemeral: true }).catch(() => {});
+            }
+            return;
         }
-        return;
+
+        // Period selection button (persistent after refresh)
+        // Format: period_{diningHall}_{date}_{periodId}
+        if (interaction.customId.startsWith('period_') && interaction.customId.split('_').length >= 4) {
+            try {
+                await PersistentButtonHandler.handlePeriodButton(interaction);
+            } catch (error) {
+                console.error('Error handling period button:', error);
+                await interaction.reply({ content: 'Error selecting period.', ephemeral: true }).catch(() => {});
+            }
+            return;
+        }
+
+        // Back to periods button (persistent)
+        // Format: back_to_periods_{diningHall}_{date}
+        if (interaction.customId.startsWith('back_to_periods_')) {
+            try {
+                await PersistentButtonHandler.handleRefreshButton(interaction);
+            } catch (error) {
+                console.error('Error handling back button:', error);
+                await interaction.reply({ content: 'Error going back.', ephemeral: true }).catch(() => {});
+            }
+            return;
+        }
     }
 
     // Handle dropdown interactions for station selection

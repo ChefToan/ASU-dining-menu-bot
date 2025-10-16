@@ -59,7 +59,8 @@ export function parsePeriods(apiPeriods: MenuPeriod[]): Period[] {
 }
 
 // Helper function to create period selection buttons
-export function createPeriodButtons(periods: Period[]): ActionRowBuilder<ButtonBuilder>[] {
+// diningHall and date are optional for backwards compatibility with local collectors
+export function createPeriodButtons(periods: Period[], diningHall?: string, date?: string): ActionRowBuilder<ButtonBuilder>[] {
     const rows: ActionRowBuilder<ButtonBuilder>[] = [];
 
     // Create rows with up to 5 buttons each
@@ -67,9 +68,15 @@ export function createPeriodButtons(periods: Period[]): ActionRowBuilder<ButtonB
         const row = new ActionRowBuilder<ButtonBuilder>();
 
         for (let j = i; j < i + MENU_CONFIG.MAX_BUTTONS_PER_ROW && j < periods.length; j++) {
+            // Encode context in button ID if provided (for persistent buttons)
+            // Format: period_{diningHall}_{date}_{periodId}
+            const customId = (diningHall && date)
+                ? `period_${diningHall}_${date}_${periods[j].id}`
+                : `period_${periods[j].id}`; // fallback for local collectors
+
             row.addComponents(
                 new ButtonBuilder()
-                    .setCustomId(`period_${periods[j].id}`)
+                    .setCustomId(customId)
                     .setLabel(periods[j].name)
                     .setStyle(ButtonStyle.Primary)
             );
@@ -85,7 +92,9 @@ export function createPeriodButtons(periods: Period[]): ActionRowBuilder<ButtonB
 export function createStationButtons(
     stations: [string, string][],
     periodId?: string,
-    activeStationId?: string
+    _activeStationId?: string, // Prefix with _ to indicate intentionally unused
+    diningHall?: string,
+    date?: string
 ): ActionRowBuilder<ButtonBuilder>[] {
     const rows: ActionRowBuilder<ButtonBuilder>[] = [];
 
@@ -96,10 +105,16 @@ export function createStationButtons(
         for (let j = i; j < i + MENU_CONFIG.MAX_BUTTONS_PER_ROW && j < stations.length; j++) {
             const [stationId, stationName] = stations[j];
 
-            // Make sure we have a periodId, and include it in the customId
-            const customId = periodId
-                ? `station_${periodId}_${stationId}`
-                : `station_unknown_${stationId}`;
+            // Encode full context if provided (for persistent buttons)
+            // Format: station_{diningHall}_{date}_{periodId}_{stationId}
+            let customId: string;
+            if (diningHall && date && periodId) {
+                customId = `station_${diningHall}_${date}_${periodId}_${stationId}`;
+            } else if (periodId) {
+                customId = `station_${periodId}_${stationId}`;
+            } else {
+                customId = `station_unknown_${stationId}`;
+            }
 
             row.addComponents(
                 new ButtonBuilder()
