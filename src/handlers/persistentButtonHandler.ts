@@ -4,7 +4,6 @@ import { DINING_HALLS } from '../utils/config';
 import {
     parsePeriods,
     createPeriodButtons,
-    createRefreshButton,
     getDiningHallDisplayName,
     formatDateForDisplay,
     formatMessage,
@@ -120,6 +119,7 @@ export class PersistentButtonHandler {
             }
 
             // Recreate the exact same UI as the original menu command (no refresh button initially)
+            // This mimics how /menu initializes
             const availablePeriods = parsePeriods(menuData.Menu.MenuPeriods);
             const mainEmbed = createMainEmbed(displayName, formattedDisplayDate);
             const periodButtons = createPeriodButtons(availablePeriods);
@@ -129,6 +129,24 @@ export class PersistentButtonHandler {
                     embeds: [mainEmbed],
                     components: periodButtons
                 });
+
+                // Add a small delay before setting up handlers to prevent mobile race conditions
+                await new Promise(resolve => setTimeout(resolve, 100));
+
+                // Set up interaction handling exactly like the initial /menu command
+                await setupInteractionHandlers(
+                    interaction,
+                    diningHall,
+                    diningHallOption,
+                    formattedDate,
+                    displayName,
+                    formattedDisplayDate,
+                    availablePeriods,
+                    mainEmbed,
+                    periodButtons
+                );
+
+                console.log('[PersistentRefresh] Successfully refreshed menu with full interaction handling');
             } else {
                 // Create new message when token is expired
                 const channel = interaction.channel;
@@ -138,8 +156,7 @@ export class PersistentButtonHandler {
                         components: periodButtons
                     });
 
-                    // Set up interaction handling for the new message
-                    // We need to create a fake interaction object for setupInteractionHandlers
+                    // Create a fake interaction for the new message
                     const fakeInteraction = {
                         ...interaction,
                         fetchReply: () => Promise.resolve(newMessage),
@@ -159,25 +176,10 @@ export class PersistentButtonHandler {
                         periodButtons
                     );
 
-                    console.log('[PersistentRefresh] Successfully refreshed menu with new message');
+                    console.log('[PersistentRefresh] Successfully created new menu message');
                     return;
                 }
             }
-
-            // Set up interaction handling for the refreshed menu (same as original)
-            await setupInteractionHandlers(
-                interaction,
-                diningHall,
-                diningHallOption,
-                formattedDate,
-                displayName,
-                formattedDisplayDate,
-                availablePeriods,
-                mainEmbed,
-                periodButtons
-            );
-
-            console.log('[PersistentRefresh] Successfully refreshed menu with full interaction handling');
 
         } catch (error) {
             console.error('Error in persistent refresh:', error);
