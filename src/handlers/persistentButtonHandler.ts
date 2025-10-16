@@ -10,8 +10,6 @@ import {
     createMainEmbed
 } from '../utils/menuHelpers';
 import { MENU_CONFIG } from '../utils/config';
-
-// Import the setupInteractionHandlers function from menuCommand
 import { setupInteractionHandlers } from '../commands/food/menuCommand';
 
 /**
@@ -118,68 +116,57 @@ export class PersistentButtonHandler {
                 return;
             }
 
-            // Recreate the exact same UI as the original menu command (no refresh button initially)
-            // This mimics how /menu initializes
+            // Recreate full interactive menu by creating a NEW message
+            // This avoids mobile glitching from collector conflicts on the same message
             const availablePeriods = parsePeriods(menuData.Menu.MenuPeriods);
             const mainEmbed = createMainEmbed(displayName, formattedDisplayDate);
             const periodButtons = createPeriodButtons(availablePeriods);
 
-            if (canEditReply) {
-                await interaction.editReply({
-                    embeds: [mainEmbed],
-                    components: periodButtons
-                });
-
-                // Add a small delay before setting up handlers to prevent mobile race conditions
-                await new Promise(resolve => setTimeout(resolve, 100));
-
-                // Set up interaction handling exactly like the initial /menu command
-                await setupInteractionHandlers(
-                    interaction,
-                    diningHall,
-                    diningHallOption,
-                    formattedDate,
-                    displayName,
-                    formattedDisplayDate,
-                    availablePeriods,
-                    mainEmbed,
-                    periodButtons
-                );
-
-                console.log('[PersistentRefresh] Successfully refreshed menu with full interaction handling');
-            } else {
-                // Create new message when token is expired
-                const channel = interaction.channel;
-                if (channel && 'send' in channel) {
-                    const newMessage = await channel.send({
-                        embeds: [mainEmbed],
-                        components: periodButtons
-                    });
-
-                    // Create a fake interaction for the new message
-                    const fakeInteraction = {
-                        ...interaction,
-                        fetchReply: () => Promise.resolve(newMessage),
-                        replied: false,
-                        deferred: false
-                    } as ButtonInteraction;
-
-                    await setupInteractionHandlers(
-                        fakeInteraction,
-                        diningHall,
-                        diningHallOption,
-                        formattedDate,
-                        displayName,
-                        formattedDisplayDate,
-                        availablePeriods,
-                        mainEmbed,
-                        periodButtons
-                    );
-
-                    console.log('[PersistentRefresh] Successfully created new menu message');
-                    return;
-                }
+            // Always create a new message for refresh to avoid collector conflicts
+            const channel = interaction.channel;
+            if (!channel || !('send' in channel)) {
+                console.error('[PersistentRefresh] Cannot access channel');
+                return;
             }
+
+            // Send the new menu message
+            const newMessage = await channel.send({
+                embeds: [mainEmbed],
+                components: periodButtons
+            });
+
+            // Delete the old message to keep things clean
+            try {
+                const oldMessage = await interaction.fetchReply();
+                await oldMessage.delete();
+            } catch (error) {
+                console.log('[PersistentRefresh] Could not delete old message (may be expired)');
+            }
+
+            // Create a fake interaction that points to the new message
+            const fakeInteraction = {
+                ...interaction,
+                fetchReply: () => Promise.resolve(newMessage),
+                editReply: (options: any) => newMessage.edit(options),
+                replied: true,
+                deferred: true,
+                createdTimestamp: Date.now()
+            } as ButtonInteraction;
+
+            // Set up interaction handlers on the NEW message
+            await setupInteractionHandlers(
+                fakeInteraction,
+                diningHall,
+                diningHallOption,
+                formattedDate,
+                displayName,
+                formattedDisplayDate,
+                availablePeriods,
+                mainEmbed,
+                periodButtons
+            );
+
+            console.log('[PersistentRefresh] Successfully created new menu message with full interactivity');
 
         } catch (error) {
             console.error('Error in persistent refresh:', error);
