@@ -175,6 +175,13 @@ export async function setupInteractionHandlers(
                     currentPeriodMenuData
                 );
             } else if (buttonInteraction.customId === 'back_to_periods') {
+                // Clear components first to force mobile re-render
+                await buttonInteraction.editReply({
+                    components: []
+                });
+
+                await new Promise(resolve => setTimeout(resolve, 50));
+
                 await buttonInteraction.editReply({
                     embeds: [mainEmbed],
                     components: periodButtons
@@ -267,6 +274,13 @@ async function handlePeriodSelection(
         );
 
     const allComponents = [...stationButtons, navigationButtons];
+
+    // Clear components first to force mobile re-render
+    await buttonInteraction.editReply({
+        components: []
+    });
+
+    await new Promise(resolve => setTimeout(resolve, 50));
 
     await buttonInteraction.editReply({
         embeds: [stationSelectionEmbed],
@@ -370,6 +384,13 @@ async function handleStationButtonSelection(
         );
 
     const allComponents = [...stationButtons, navigationButtons];
+
+    // Clear components first to force mobile re-render
+    await buttonInteraction.editReply({
+        components: []
+    });
+
+    await new Promise(resolve => setTimeout(resolve, 50));
 
     await buttonInteraction.editReply({
         embeds: [stationMenuEmbed],

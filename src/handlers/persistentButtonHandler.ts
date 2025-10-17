@@ -254,6 +254,13 @@ export class PersistentButtonHandler {
 
             const allComponents = [...stationButtons, navigationRow];
 
+            // Clear components first to force mobile re-render
+            await interaction.editReply({
+                components: []
+            });
+
+            await new Promise(resolve => setTimeout(resolve, 50));
+
             await interaction.editReply({
                 embeds: [stationSelectionEmbed],
                 components: allComponents
