@@ -180,7 +180,8 @@ export async function setupInteractionHandlers(
                     components: []
                 });
 
-                await new Promise(resolve => setTimeout(resolve, 50));
+                // Delay to ensure mobile clients process the clear (increased for reliability)
+                await new Promise(resolve => setTimeout(resolve, 150));
 
                 await buttonInteraction.editReply({
                     embeds: [mainEmbed],
@@ -280,7 +281,8 @@ async function handlePeriodSelection(
         components: []
     });
 
-    await new Promise(resolve => setTimeout(resolve, 50));
+    // Delay to ensure mobile clients process the clear (increased for reliability)
+    await new Promise(resolve => setTimeout(resolve, 150));
 
     await buttonInteraction.editReply({
         embeds: [stationSelectionEmbed],
@@ -390,7 +392,8 @@ async function handleStationButtonSelection(
         components: []
     });
 
-    await new Promise(resolve => setTimeout(resolve, 50));
+    // Delay to ensure mobile clients process the clear (increased for reliability)
+    await new Promise(resolve => setTimeout(resolve, 150));
 
     await buttonInteraction.editReply({
         embeds: [stationMenuEmbed],

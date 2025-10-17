@@ -132,8 +132,8 @@ export class PersistentButtonHandler {
                     components: []
                 });
 
-                // Small delay to ensure mobile clients process the clear
-                await new Promise(resolve => setTimeout(resolve, 50));
+                // Delay to ensure mobile clients process the clear (increased for reliability)
+                await new Promise(resolve => setTimeout(resolve, 150));
 
                 // Then set the new components
                 await interaction.editReply({
@@ -259,7 +259,8 @@ export class PersistentButtonHandler {
                 components: []
             });
 
-            await new Promise(resolve => setTimeout(resolve, 50));
+            // Delay to ensure mobile clients process the clear (increased for reliability)
+            await new Promise(resolve => setTimeout(resolve, 150));
 
             await interaction.editReply({
                 embeds: [stationSelectionEmbed],
