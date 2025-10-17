@@ -61,15 +61,11 @@ export function parsePeriods(apiPeriods: MenuPeriod[]): Period[] {
 // Helper function to create period selection buttons
 // diningHall and date are optional for backwards compatibility with local collectors
 export function createPeriodButtons(periods: Period[], diningHall?: string, date?: string): ActionRowBuilder<ButtonBuilder>[] {
-    console.log('[DEBUG-createPeriodButtons] Creating buttons for', periods.length, 'periods');
-    console.log('[DEBUG-createPeriodButtons] diningHall:', diningHall, 'date:', date);
-
     const rows: ActionRowBuilder<ButtonBuilder>[] = [];
 
     // Create rows with up to 5 buttons each
     for (let i = 0; i < periods.length; i += MENU_CONFIG.MAX_BUTTONS_PER_ROW) {
         const row = new ActionRowBuilder<ButtonBuilder>();
-        console.log(`[DEBUG-createPeriodButtons] Creating row ${rows.length} for periods ${i} to ${Math.min(i + MENU_CONFIG.MAX_BUTTONS_PER_ROW, periods.length) - 1}`);
 
         for (let j = i; j < i + MENU_CONFIG.MAX_BUTTONS_PER_ROW && j < periods.length; j++) {
             // Encode context in button ID if provided (for persistent buttons)
@@ -77,8 +73,6 @@ export function createPeriodButtons(periods: Period[], diningHall?: string, date
             const customId = (diningHall && date)
                 ? `period_${diningHall}_${date}_${periods[j].id}`
                 : `period_${periods[j].id}`; // fallback for local collectors
-
-            console.log(`[DEBUG-createPeriodButtons]   Adding button: "${periods[j].name}" with customId="${customId}"`);
 
             row.addComponents(
                 new ButtonBuilder()
@@ -89,10 +83,8 @@ export function createPeriodButtons(periods: Period[], diningHall?: string, date
         }
 
         rows.push(row);
-        console.log(`[DEBUG-createPeriodButtons]   Row ${rows.length - 1} complete with ${row.components.length} buttons`);
     }
 
-    console.log('[DEBUG-createPeriodButtons] Total rows created:', rows.length);
     return rows;
 }
 
