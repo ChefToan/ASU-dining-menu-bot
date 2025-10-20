@@ -16,7 +16,6 @@ import {
     parsePeriods,
     createPeriodButtons,
     createStationButtons,
-    createRefreshButton,
     getDiningHallDisplayName,
     formatDateForDisplay,
     formatDateForAPI,
@@ -140,19 +139,7 @@ export async function setupInteractionHandlers(
         if (componentInteraction.isButton()) {
             const buttonInteraction = componentInteraction;
 
-            if (buttonInteraction.customId === 'persistent_refresh_menu' ||
-                buttonInteraction.customId.startsWith('refresh_menu_')) {
-                // Skip - handled by global persistent button handler
-                return;
-            } else if (buttonInteraction.customId.startsWith('period_')) {
-                // Check if this is a persistent period button (has context encoded)
-                const parts = buttonInteraction.customId.split('_');
-                if (parts.length >= 4) {
-                    // This is a persistent button with format: period_{diningHall}_{date}_{periodId}
-                    // Skip - handled by global persistent button handler
-                    return;
-                }
-
+            if (buttonInteraction.customId.startsWith('period_')) {
                 await handlePeriodSelection(
                     buttonInteraction,
                     diningHall,
@@ -412,16 +399,9 @@ async function handleCollectorEnd(
 ) {
     try {
         if (interaction.replied || interaction.deferred) {
-            // Add refresh button when initial collector ends
-            // The global handler in index.ts will process refresh button clicks
-            const refreshRow = createRefreshButton(diningHallOption, formattedDate);
-            await interaction.editReply({ components: [refreshRow] })
-                .catch(error => console.error('Error adding refresh button:', error));
-
-            // Note: No local collector needed - the global persistent button handler
-            // in index.ts handles all refresh button interactions
-            // This prevents duplicate collectors from racing to process the same interaction,
-            // which causes button glitching on mobile devices
+            // Delete the message when collector expires for cleaner chat
+            const message = await interaction.fetchReply();
+            await message.delete().catch(error => console.error('Error deleting message:', error));
         }
     } catch (error) {
         console.error('Error in collector end handler:', error);
