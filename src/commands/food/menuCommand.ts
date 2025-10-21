@@ -162,25 +162,17 @@ export async function setupInteractionHandlers(
                     currentPeriodMenuData
                 );
             } else if (buttonInteraction.customId === 'back_to_periods') {
-                // Clear components first to force mobile re-render
-                await buttonInteraction.editReply({
-                    components: []
-                });
-
-                // Delay to ensure mobile clients process the clear (increased for reliability)
-                await new Promise(resolve => setTimeout(resolve, 150));
-
                 await buttonInteraction.editReply({
                     embeds: [mainEmbed],
                     components: periodButtons
                 });
             }
         }
-        
+
     });
 
     collector.on('end', () => {
-        handleCollectorEnd(interaction, diningHall, diningHallOption, formattedDate, displayName, formattedDisplayDate);
+        handleCollectorEnd(interaction);
     });
 }
 
@@ -248,10 +240,10 @@ async function handlePeriodSelection(
     const dateObj = new Date(year, month - 1, day);
 
     const stationSelectionEmbed = createStationSelectionEmbed(displayName, formattedDisplayDate, selectedPeriod, dateObj);
-    
+
     // Create station buttons
     const stationButtons = createStationButtons(nonEmptyStations, selectedPeriodId);
-    
+
     // Create back button only (no refresh during station selection)
     const navigationButtons = new ActionRowBuilder<ButtonBuilder>()
         .addComponents(
@@ -262,14 +254,6 @@ async function handlePeriodSelection(
         );
 
     const allComponents = [...stationButtons, navigationButtons];
-
-    // Clear components first to force mobile re-render
-    await buttonInteraction.editReply({
-        components: []
-    });
-
-    // Delay to ensure mobile clients process the clear (increased for reliability)
-    await new Promise(resolve => setTimeout(resolve, 150));
 
     await buttonInteraction.editReply({
         embeds: [stationSelectionEmbed],
@@ -358,12 +342,12 @@ async function handleStationButtonSelection(
         dateObj
     );
 
-    // Create station buttons with current station selected  
+    // Create station buttons with current station selected
     const nonEmptyStations = Array.from(stationNames.entries())
         .filter(([sId]) => (stationMap.get(sId) || []).length > 0);
     const stationButtons = createStationButtons(nonEmptyStations, periodId);
-    
-    // Create back button only (no refresh during station selection)  
+
+    // Create back button only (no refresh during station selection)
     const navigationButtons = new ActionRowBuilder<ButtonBuilder>()
         .addComponents(
             new ButtonBuilder()
@@ -374,14 +358,6 @@ async function handleStationButtonSelection(
 
     const allComponents = [...stationButtons, navigationButtons];
 
-    // Clear components first to force mobile re-render
-    await buttonInteraction.editReply({
-        components: []
-    });
-
-    // Delay to ensure mobile clients process the clear (increased for reliability)
-    await new Promise(resolve => setTimeout(resolve, 150));
-
     await buttonInteraction.editReply({
         embeds: [stationMenuEmbed],
         components: allComponents
@@ -390,12 +366,7 @@ async function handleStationButtonSelection(
 
 // Handle collector end
 async function handleCollectorEnd(
-    interaction: CommandInteraction | ButtonInteraction,
-    diningHall: any,
-    diningHallOption: string,
-    formattedDate: string,
-    displayName: string,
-    formattedDisplayDate: string
+    interaction: CommandInteraction | ButtonInteraction
 ) {
     try {
         if (interaction.replied || interaction.deferred) {
