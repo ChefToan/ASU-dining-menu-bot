@@ -97,8 +97,8 @@ client.once(Events.ClientReady, async (readyClient) => {
 
     // Start menu refresh scheduler
     console.log('Starting menu cache scheduler...');
-    menuScheduler.start();
-    console.log('✅ Menu scheduler started - menus will refresh every 6 hours');
+    await menuScheduler.start();
+    console.log('✅ Menu scheduler started and initial preload completed');
 
     // Initialize and start weekly report scheduler
     console.log('Starting weekly report scheduler...');

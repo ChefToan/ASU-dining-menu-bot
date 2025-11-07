@@ -13,7 +13,7 @@ export class MenuScheduler {
     /**
      * Start the menu refresh scheduler aligned to 12am Arizona time
      */
-    start(): void {
+    async start(): Promise<void> {
         console.log('[MenuScheduler] Starting menu refresh scheduler aligned to 12am Arizona time...');
 
         // Calculate time until next 12am or 12pm Arizona time
@@ -23,7 +23,13 @@ export class MenuScheduler {
 
         // Always run initial preload on startup to ensure cache is up to date
         console.log('[MenuScheduler] Running initial preload to ensure cache is up to date...');
-        this.runPreload();
+        try {
+            await this.runPreload();
+            console.log('[MenuScheduler] ✅ Initial preload completed successfully');
+        } catch (error) {
+            console.error('[MenuScheduler] ⚠️ Initial preload failed:', error);
+            console.log('[MenuScheduler] Bot will continue, but cache may be incomplete until next scheduled refresh');
+        }
 
         // Schedule first aligned refresh
         const initialTimeout = setTimeout(() => {
@@ -43,7 +49,9 @@ export class MenuScheduler {
         }, MenuScheduler.CLEANUP_INTERVAL);
 
         // Run initial cleanup
-        this.runCleanup();
+        await this.runCleanup().catch(error => {
+            console.warn('[MenuScheduler] Initial cleanup failed:', error);
+        });
 
         const nextRefreshTime = new Date(Date.now() + timeUntilNextRefresh);
         const arizonaTimeStr = nextRefreshTime.toLocaleString('en-US', {

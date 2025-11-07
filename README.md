@@ -8,7 +8,7 @@ A comprehensive Discord bot for Arizona State University that provides dining ha
 
 ### Core Features
 - **Real-time Menu Access**: Fetch the latest menus from ASU dining halls
-- **Multiple Dining Halls**: Support for Barrett, Manzi (Manzanita), Hassay (Hassayampa), Tooker, and MU (Pitchforks)
+- **Multiple Dining Halls**: Support for Barrett, Manzy (Manzanita), Hassay (Hassayampa), Tooker, and MU (Pitchforks)
 - **Date Selection**: View menus for today or any specific date
 - **Station-based Organization**: View menu items organized by food stations
 - **Interactive Interface**: User-friendly button-based navigation
@@ -75,7 +75,7 @@ Once the bot is running and added to your Discord server, you can use the follow
 /menu [dining_hall] [date]
 ```
 
-- `dining_hall` (required): Choose from Barrett, Manzi (Manzanita), Hassay (Hassayampa), Tooker, or MU (Pitchforks)
+- `dining_hall` (required): Choose from Barrett, Manzy (Manzanita), Hassay (Hassayampa), Tooker, or MU (Pitchforks)
 - `date` (optional): Specify a date in MM/DD/YYYY format (defaults to today)
 
 Example:

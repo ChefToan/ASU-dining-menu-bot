@@ -42,7 +42,7 @@ export interface MenuResponse {
 // Mapping of dining hall names to their IDs
 export enum DiningHallId {
     Barrett = "4295",
-    Manzi = "4294",
+    Manzy = "4294",
     Hassay = "3360",
     Tooker = "10585",
     MU = "4293",

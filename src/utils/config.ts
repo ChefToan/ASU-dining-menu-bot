@@ -6,8 +6,8 @@ export const DINING_HALLS = {
         id: DiningHallId.Barrett
     },
     manzy: {
-        name: "Manzi",
-        id: DiningHallId.Manzi
+        name: "Manzy",
+        id: DiningHallId.Manzy
     },
     hassy: {
         name: "Hassay",
