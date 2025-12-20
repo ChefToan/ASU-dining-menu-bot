@@ -100,12 +100,17 @@ client.once(Events.ClientReady, async (readyClient) => {
     await menuScheduler.start();
     console.log('✅ Menu scheduler started and initial preload completed');
 
-    // Initialize and start weekly report scheduler
-    console.log('Starting weekly report scheduler...');
-    weeklyReportScheduler = new WeeklyReportScheduler(client);
-    weeklyReportScheduler.start();
-    global.testScheduler = weeklyReportScheduler; // For manual testing
-    console.log('✅ Weekly report scheduler started - will send messages on Sundays at 12pm and 11:30pm Arizona time');
+    // Initialize and start weekly report scheduler (if enabled)
+    const enableWeeklyReports = env.getOptional('ENABLE_WEEKLY_REPORTS');
+    if (enableWeeklyReports === 'true') {
+        console.log('Starting weekly report scheduler...');
+        weeklyReportScheduler = new WeeklyReportScheduler(client);
+        weeklyReportScheduler.start();
+        global.testScheduler = weeklyReportScheduler; // For manual testing
+        console.log('✅ Weekly report scheduler started - will send messages on Sundays at 12pm and 11:30pm Arizona time');
+    } else {
+        console.log('⏸️ Weekly report scheduler is disabled (ENABLE_WEEKLY_REPORTS not set to "true")');
+    }
 
 });
 
