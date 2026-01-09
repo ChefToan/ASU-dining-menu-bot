@@ -18,6 +18,7 @@ interface OptionalEnvVars {
     TEST_CHANNEL_ID?: string;
     ASU_MENU_API_URL?: string;
     WEEKLY_REPORT_SURVEY_URL?: string;
+    ENABLE_WEEKLY_REPORTS?: string;
 }
 
 class EnvironmentValidator {
@@ -68,7 +69,8 @@ class EnvironmentValidator {
             TEST_SERVER_ID: process.env.TEST_SERVER_ID,
             TEST_CHANNEL_ID: process.env.TEST_CHANNEL_ID,
             ASU_MENU_API_URL: process.env.ASU_MENU_API_URL,
-            WEEKLY_REPORT_SURVEY_URL: process.env.WEEKLY_REPORT_SURVEY_URL
+            WEEKLY_REPORT_SURVEY_URL: process.env.WEEKLY_REPORT_SURVEY_URL,
+            ENABLE_WEEKLY_REPORTS: process.env.ENABLE_WEEKLY_REPORTS
         };
 
         console.log('✅ Environment variables validated successfully');
