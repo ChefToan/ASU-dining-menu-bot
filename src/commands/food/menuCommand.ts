@@ -370,9 +370,9 @@ async function handleCollectorEnd(
 ) {
     try {
         if (interaction.replied || interaction.deferred) {
-            // Delete the message when collector expires for cleaner chat
+            // Remove buttons when collector expires instead of deleting the message
             const message = await interaction.fetchReply();
-            await message.delete().catch(error => console.error('Error deleting message:', error));
+            await message.edit({ components: [] }).catch(error => console.error('Error removing buttons:', error));
         }
     } catch (error) {
         console.error('Error in collector end handler:', error);
